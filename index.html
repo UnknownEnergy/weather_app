@@ -71,6 +71,12 @@
       min-height: 1.2em;
       font-size: 0.95rem;
     }
+    #current-temp {
+      text-align: center;
+      font-weight: bold;
+      margin-top: 0.5rem;
+      font-size: 1.1rem;
+    }
     canvas {
       background: white;
       border: 1px solid #ddd;
@@ -110,16 +116,18 @@
       #error-msg {
         font-size: 0.9rem;
       }
+      #current-temp {
+        font-size: 1rem;
+      }
     }
   </style>
 </head>
 <body>
   <h1>Current Temperature (TAWES Stations)</h1>
 
-  <div class="controls">
+  <div class="controls" role="region" aria-label="Station and time range selection">
     <label for="station-select">Select Station:</label>
     <select id="station-select"></select>
-    <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
 
     <label for="timerange-select">Select Time Range:</label>
     <select id="timerange-select" aria-label="Select time range">
@@ -129,9 +137,12 @@
       <option value="72">Past 3 days</option>
       <option value="168">Past 7 days</option>
     </select>
+
+    <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
   </div>
 
-  <canvas id="tempChart" width="800" height="400"></canvas>
+  <canvas id="tempChart" width="800" height="400" aria-label="Temperature chart"></canvas>
+  <div id="current-temp" aria-live="polite" aria-atomic="true"></div>
   <div id="last-updated"></div>
   <div id="error-msg" role="alert" aria-live="assertive"></div>
 
@@ -143,6 +154,7 @@
     const ctx = document.getElementById('tempChart').getContext('2d');
     const lastUpdatedDiv = document.getElementById('last-updated');
     const timerangeSelect = document.getElementById('timerange-select');
+    const currentTempDiv = document.getElementById('current-temp');
 
     let stations = {}; // merged station info keyed by stationId
     let tempChart;
@@ -260,8 +272,6 @@
 
         // Calculate start date based on selected range in hours
         const startDate = new Date(now.getTime() - hoursRange * 3600 * 1000);
-        // Sometimes datasets need UTC start aligned, but here we just use exact date/time
-
         // End date slightly in future to include latest data
         const endDate = new Date(now.getTime() + 10 * 60000);
 
@@ -349,10 +359,20 @@
           });
         }
 
+        // Update current temperature display
+        if (temperatureData.length > 0) {
+          const latestTemp = temperatureData[temperatureData.length - 2];
+          const latestTime = timestamps[timestamps.length - 1];
+          currentTempDiv.textContent = `Temperature: ${latestTemp} °C (at ${latestTime.toLocaleString()})`;
+        } else {
+          currentTempDiv.textContent = 'No temperature data available.';
+        }
+
         lastUpdatedDiv.textContent = `Last updated: ${new Date().toLocaleString()}`;
 
       } catch (error) {
         lastUpdatedDiv.textContent = '';
+        currentTempDiv.textContent = '';
         errorMsg.textContent = `Error loading data: ${error.message}`;
         console.error(error);
       }
