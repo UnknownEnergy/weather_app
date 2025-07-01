@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Temperature Chart - TAWES Stations with Coordinates</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      background: #f7f9fc;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    label {
+      font-weight: bold;
+      margin-right: 0.5rem;
+    }
+    select {
+      padding: 0.3rem 0.5rem;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      min-width: 250px;
+    }
+    #last-updated {
+      margin-top: 0.5rem;
+      font-style: italic;
+      color: #555;
+      text-align: center;
+    }
+    canvas {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    #location-btn {
+      display: inline-block;
+      margin-left: 1rem;
+      padding: 0.4rem 0.8rem;
+      font-size: 1rem;
+      cursor: pointer;
+      background-color: #007bff;
+      border: none;
+      color: white;
+      border-radius: 4px;
+      vertical-align: middle;
+      transition: background-color 0.2s ease;
+    }
+    #location-btn:hover:not(:disabled) {
+      background-color: #0056b3;
+    }
+    #location-btn:disabled {
+      background-color: #999;
+      cursor: default;
+    }
+    #error-msg {
+      color: #cc0000;
+      font-weight: bold;
+      margin-top: 0.5rem;
+      text-align: center;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Current Temperature (TAWES Stations)</h1>
+
+  <label for="station-select">Select Station:</label>
+  <select id="station-select"></select>
+  <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
+
+  <canvas id="tempChart" width="800" height="400"></canvas>
+  <div id="last-updated"></div>
+  <div id="error-msg" role="alert" aria-live="assertive"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const stationSelect = document.getElementById('station-select');
+    const locationBtn = document.getElementById('location-btn');
+    const errorMsg = document.getElementById('error-msg');
+    const ctx = document.getElementById('tempChart').getContext('2d');
+    const lastUpdatedDiv = document.getElementById('last-updated');
+
+    let stations = {}; // Will hold merged station data keyed by stationId (string)
+    let tempChart;
+    let refreshIntervalId;
+
+    const STORAGE_KEY = 'selectedStationId';
+
+    // Format date to ISO string without ms
+    function toISOStringNoMs(date) {
+      return date.toISOString().split('.')[0] + 'Z';
+    }
+
+    // Calculate haversine distance (meters) between two lat/lon points
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+      const toRad = angle => angle * Math.PI / 180;
+      const R = 6371000; // Earth radius in meters
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // Load stations metadata and coordinates, merge, then populate dropdown
+    async function loadStations() {
+      try {
+        // Load metadata (names, klima_id, elevation)
+        const metaResp = await fetch('https://www.geosphere.at/data/stations/tawes/points');
+        if (!metaResp.ok) throw new Error(`Failed to load station metadata: ${metaResp.status}`);
+        const metaData = await metaResp.json();
+        if (!metaData.mapping) throw new Error('Invalid station metadata format');
+
+        // Load current_data (for coordinates)
+        const coordResp = await fetch('https://www.geosphere.at/data/stations/tawes/current_data');
+        if (!coordResp.ok) throw new Error(`Failed to load station coordinates: ${coordResp.status}`);
+        const coordData = await coordResp.json();
+        if (!coordData.features) throw new Error('Invalid station coordinates format');
+
+        // Build a map stationId => { lat, lon }
+        const coordsMap = {};
+        for (const feature of coordData.features) {
+          const sid = String(feature.properties.station);
+          const coords = feature.geometry.coordinates; // [lon, lat]
+          coordsMap[sid] = { lat: coords[1], lon: coords[0] };
+        }
+
+        // Merge metadata + coordinates into stations object
+        stations = {};
+        for (const [stationId, info] of Object.entries(metaData.mapping)) {
+          if (coordsMap[stationId]) {
+            stations[stationId] = {
+              name: info.name,
+              klima_id: info.klima_id,
+              elevation: info.elevation,
+              lat: coordsMap[stationId].lat,
+              lon: coordsMap[stationId].lon
+            };
+          } else {
+            // Station has no coordinates, include anyway but no lat/lon
+            stations[stationId] = {
+              name: info.name,
+              klima_id: info.klima_id,
+              elevation: info.elevation,
+              lat: null,
+              lon: null
+            };
+          }
+        }
+
+        // Populate dropdown sorted by name
+        stationSelect.innerHTML = '';
+        const sortedStations = Object.entries(stations)
+          .filter(([, s]) => s.lat !== null && s.lon !== null) // only stations with coords
+          .sort((a, b) => a[1].name.localeCompare(b[1].name));
+
+        for (const [stationId, info] of sortedStations) {
+          const option = document.createElement('option');
+          option.value = stationId;
+          option.textContent = `${info.name} (ID: ${stationId})`;
+          stationSelect.appendChild(option);
+        }
+
+        // Restore saved station or pick first
+        const savedStationId = localStorage.getItem(STORAGE_KEY);
+        if (savedStationId && stations[savedStationId]) {
+          stationSelect.value = savedStationId;
+          startRefresh(savedStationId);
+        } else if (stationSelect.options.length > 0) {
+          stationSelect.selectedIndex = 0;
+          startRefresh(stationSelect.value);
+        }
+
+      } catch (error) {
+        lastUpdatedDiv.textContent = '';
+        errorMsg.textContent = `Error loading stations: ${error.message}`;
+        console.error(error);
+      }
+    }
+
+    // Fetch temperature data for selected station and update chart
+    async function fetchAndUpdateData(stationId) {
+      try {
+        errorMsg.textContent = '';
+        const now = new Date();
+        const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+        let endDate = new Date(now.getTime() + 10 * 60000);
+
+        // Compose API url with parameters=TL for temperature
+        const url = new URL('https://dataset.api.hub.geosphere.at/v1/station/historical/tawes-v1-10min');
+        url.searchParams.set('parameters', 'TL');
+        url.searchParams.set('start', toISOStringNoMs(startDate));
+        url.searchParams.set('end', toISOStringNoMs(endDate));
+        url.searchParams.set('station_ids', stationId);
+
+        lastUpdatedDiv.textContent = 'Loading data...';
+
+        const response = await fetch(url.toString());
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        const data = await response.json();
+
+        if (!data.features || data.features.length === 0) {
+          throw new Error('No data available for this station.');
+        }
+
+        const timestamps = data.timestamps.map(ts => new Date(ts));
+        const temperatureData = data.features[0].properties.parameters.TL.data;
+
+        // Format labels in 24h time format
+        const labels = timestamps.map(ts => ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'}));
+        const temps = temperatureData;
+
+        if (tempChart) {
+          tempChart.data.labels = labels;
+          tempChart.data.datasets[0].data = temps;
+          tempChart.data.datasets[0].label = `Temperature (°C) - ${stations[stationId].name}`;
+          tempChart.update();
+        } else {
+          tempChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: `Temperature (°C) - ${stations[stationId].name}`,
+                data: temps,
+                borderColor: 'rgba(255, 99, 132, 0.8)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                borderWidth: 2,
+              }]
+            },
+            options: {
+              responsive: true,
+              animation: false,
+              scales: {
+                x: {
+                  title: { display: true, text: 'Time (UTC)' },
+                  ticks: { maxRotation: 45, minRotation: 30 }
+                },
+                y: {
+                  title: { display: true, text: 'Temperature (°C)' },
+                  suggestedMin: 0,
+                  suggestedMax: 40
+                }
+              },
+              plugins: {
+                legend: { display: true },
+                tooltip: {
+                  mode: 'index',
+                  intersect: false,
+                  callbacks: {
+                    label: ctx => `${ctx.parsed.y} °C`
+                  }
+                }
+              },
+              interaction: {
+                mode: 'nearest',
+                intersect: false
+              }
+            }
+          });
+        }
+
+        lastUpdatedDiv.textContent = `Last updated: ${new Date().toLocaleString()}`;
+
+      } catch (error) {
+        lastUpdatedDiv.textContent = '';
+        errorMsg.textContent = `Error loading data: ${error.message}`;
+        console.error(error);
+      }
+    }
+
+    // Start refresh interval for selected station
+    function startRefresh(stationId) {
+      if (refreshIntervalId) clearInterval(refreshIntervalId);
+
+      fetchAndUpdateData(stationId);
+
+      refreshIntervalId = setInterval(() => {
+        fetchAndUpdateData(stationId);
+      }, 300000); // 5 minutes
+    }
+
+    // Event: user changes station select
+    stationSelect.addEventListener('change', () => {
+      const selectedStation = stationSelect.value;
+      if (selectedStation) {
+        localStorage.setItem(STORAGE_KEY, selectedStation);
+        startRefresh(selectedStation);
+      }
+    });
+
+    // Event: user clicks "Use My Location"
+    locationBtn.addEventListener('click', () => {
+      errorMsg.textContent = '';
+      if (!navigator.geolocation) {
+        errorMsg.textContent = 'Geolocation is not supported by your browser.';
+        return;
+      }
+
+      locationBtn.disabled = true;
+      locationBtn.textContent = 'Locating...';
+
+      navigator.geolocation.getCurrentPosition(position => {
+        const userLat = position.coords.latitude;
+        const userLon = position.coords.longitude;
+
+        let minDist = Infinity;
+        let nearestStationId = null;
+
+        for (const [stationId, info] of Object.entries(stations)) {
+          if (info.lat === null || info.lon === null) continue;
+          const dist = haversineDistance(userLat, userLon, info.lat, info.lon);
+          if (dist < minDist) {
+            minDist = dist;
+            nearestStationId = stationId;
+          }
+        }
+
+        if (nearestStationId) {
+          stationSelect.value = nearestStationId;
+          localStorage.setItem(STORAGE_KEY, nearestStationId);
+          startRefresh(nearestStationId);
+          errorMsg.textContent = `Nearest station selected: ${stations[nearestStationId].name}`;
+        } else {
+          errorMsg.textContent = 'Could not find a nearby station.';
+        }
+
+        locationBtn.disabled = false;
+        locationBtn.textContent = 'Use My Location';
+
+      }, err => {
+        errorMsg.textContent = `Geolocation error: ${err.message}`;
+        locationBtn.disabled = false;
+        locationBtn.textContent = 'Use My Location';
+      }, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
+      });
+    });
+
+    // Initialize app
+    loadStations();
+  </script>
+</body>
+</html>
