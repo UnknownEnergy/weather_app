@@ -34,7 +34,7 @@
     select {
       padding: 0.4rem 0.6rem;
       font-size: 1rem;
-      min-width: 250px;
+      min-width: 180px;
       border-radius: 4px;
       border: 1px solid #ccc;
     }
@@ -120,6 +120,15 @@
     <label for="station-select">Select Station:</label>
     <select id="station-select"></select>
     <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
+
+    <label for="timerange-select">Select Time Range:</label>
+    <select id="timerange-select" aria-label="Select time range">
+      <option value="1">Past 1 hour</option>
+      <option value="12">Past 12 hours</option>
+      <option value="24" selected>Past 24 hours</option>
+      <option value="72">Past 3 days</option>
+      <option value="168">Past 7 days</option>
+    </select>
   </div>
 
   <canvas id="tempChart" width="800" height="400"></canvas>
@@ -133,12 +142,14 @@
     const errorMsg = document.getElementById('error-msg');
     const ctx = document.getElementById('tempChart').getContext('2d');
     const lastUpdatedDiv = document.getElementById('last-updated');
+    const timerangeSelect = document.getElementById('timerange-select');
 
     let stations = {}; // merged station info keyed by stationId
     let tempChart;
     let refreshIntervalId;
 
-    const STORAGE_KEY = 'selectedStationId';
+    const STORAGE_KEY_STATION = 'selectedStationId';
+    const STORAGE_KEY_TIMERANGE = 'selectedTimeRangeHours';
 
     function toISOStringNoMs(date) {
       return date.toISOString().split('.')[0] + 'Z';
@@ -220,13 +231,19 @@
         }
 
         // Restore saved station or select first
-        const savedStationId = localStorage.getItem(STORAGE_KEY);
+        const savedStationId = localStorage.getItem(STORAGE_KEY_STATION);
+        const savedTimeRange = localStorage.getItem(STORAGE_KEY_TIMERANGE);
+
+        if (savedTimeRange && timerangeSelect.querySelector(`option[value="${savedTimeRange}"]`)) {
+          timerangeSelect.value = savedTimeRange;
+        }
+
         if (savedStationId && stations[savedStationId]) {
           stationSelect.value = savedStationId;
-          startRefresh(savedStationId);
+          startRefresh(savedStationId, parseInt(timerangeSelect.value));
         } else if (stationSelect.options.length > 0) {
           stationSelect.selectedIndex = 0;
-          startRefresh(stationSelect.value);
+          startRefresh(stationSelect.value, parseInt(timerangeSelect.value));
         }
 
       } catch (error) {
@@ -236,11 +253,16 @@
       }
     }
 
-    async function fetchAndUpdateData(stationId) {
+    async function fetchAndUpdateData(stationId, hoursRange) {
       try {
         errorMsg.textContent = '';
         const now = new Date();
-        const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+
+        // Calculate start date based on selected range in hours
+        const startDate = new Date(now.getTime() - hoursRange * 3600 * 1000);
+        // Sometimes datasets need UTC start aligned, but here we just use exact date/time
+
+        // End date slightly in future to include latest data
         const endDate = new Date(now.getTime() + 10 * 60000);
 
         const url = new URL('https://dataset.api.hub.geosphere.at/v1/station/historical/tawes-v1-10min');
@@ -263,7 +285,14 @@
         const timestamps = data.timestamps.map(ts => new Date(ts));
         const temperatureData = data.features[0].properties.parameters.TL.data;
 
-        const labels = timestamps.map(ts => ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'}));
+        // Format labels based on selected range: show date+time if > 24h else only time
+        const labels = timestamps.map(ts => {
+          if (hoursRange > 24) {
+            return ts.toLocaleString([], {year:'2-digit', month:'2-digit', day:'2-digit', hour12:false, hour: '2-digit', minute:'2-digit'});
+          } else {
+            return ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'});
+          }
+        });
         const temps = temperatureData;
 
         if (tempChart) {
@@ -329,21 +358,31 @@
       }
     }
 
-    function startRefresh(stationId) {
+    function startRefresh(stationId, hoursRange) {
       if (refreshIntervalId) clearInterval(refreshIntervalId);
 
-      fetchAndUpdateData(stationId);
+      fetchAndUpdateData(stationId, hoursRange);
 
       refreshIntervalId = setInterval(() => {
-        fetchAndUpdateData(stationId);
+        fetchAndUpdateData(stationId, hoursRange);
       }, 300000);
     }
 
     stationSelect.addEventListener('change', () => {
       const selectedStation = stationSelect.value;
+      const selectedRange = parseInt(timerangeSelect.value);
       if (selectedStation) {
-        localStorage.setItem(STORAGE_KEY, selectedStation);
-        startRefresh(selectedStation);
+        localStorage.setItem(STORAGE_KEY_STATION, selectedStation);
+        startRefresh(selectedStation, selectedRange);
+      }
+    });
+
+    timerangeSelect.addEventListener('change', () => {
+      const selectedStation = stationSelect.value;
+      const selectedRange = parseInt(timerangeSelect.value);
+      if (selectedStation) {
+        localStorage.setItem(STORAGE_KEY_TIMERANGE, selectedRange);
+        startRefresh(selectedStation, selectedRange);
       }
     });
 
@@ -375,8 +414,10 @@
 
         if (nearestStationId) {
           stationSelect.value = nearestStationId;
-          localStorage.setItem(STORAGE_KEY, nearestStationId);
-          startRefresh(nearestStationId);
+          localStorage.setItem(STORAGE_KEY_STATION, nearestStationId);
+          // Also start refresh with current time range
+          const selectedRange = parseInt(timerangeSelect.value);
+          startRefresh(nearestStationId, selectedRange);
           errorMsg.textContent = `Nearest station selected: ${stations[nearestStationId].name}`;
         } else {
           errorMsg.textContent = 'Could not find a nearby station.';
