@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Temperature Chart - TAWES Stations with Coordinates</title>
+  <title>Temperature Chart - TAWES Stations with fallback</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -87,21 +87,19 @@
     const ctx = document.getElementById('tempChart').getContext('2d');
     const lastUpdatedDiv = document.getElementById('last-updated');
 
-    let stations = {}; // Will hold merged station data keyed by stationId (string)
+    let stations = {}; // merged station info keyed by stationId
     let tempChart;
     let refreshIntervalId;
 
     const STORAGE_KEY = 'selectedStationId';
 
-    // Format date to ISO string without ms
     function toISOStringNoMs(date) {
       return date.toISOString().split('.')[0] + 'Z';
     }
 
-    // Calculate haversine distance (meters) between two lat/lon points
     function haversineDistance(lat1, lon1, lat2, lon2) {
       const toRad = angle => angle * Math.PI / 180;
-      const R = 6371000; // Earth radius in meters
+      const R = 6371000;
       const dLat = toRad(lat2 - lat1);
       const dLon = toRad(lon2 - lon1);
       const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
@@ -109,56 +107,62 @@
       return R * c;
     }
 
-    // Load stations metadata and coordinates, merge, then populate dropdown
-    async function loadStations() {
+    // Try fetch JSON from URL, fallback to local file URL on error
+    async function fetchWithFallback(remoteUrl, localUrl) {
       try {
-        // Load metadata (names, klima_id, elevation)
-        const metaResp = await fetch('https://www.geosphere.at/data/stations/tawes/points');
-        if (!metaResp.ok) throw new Error(`Failed to load station metadata: ${metaResp.status}`);
-        const metaData = await metaResp.json();
+        const response = await fetch(remoteUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json();
+      } catch (err) {
+        console.warn(`Failed to fetch ${remoteUrl}, falling back to ${localUrl}:`, err);
+        // try local file
+        const response = await fetch(localUrl);
+        if (!response.ok) throw new Error(`Fallback HTTP ${response.status}`);
+        return await response.json();
+      }
+    }
+
+    async function loadStations() {
+      errorMsg.textContent = '';
+      try {
+        // Fetch metadata with fallback
+        const metaData = await fetchWithFallback(
+          'https://www.geosphere.at/data/stations/tawes/points',
+          './points.json'
+        );
         if (!metaData.mapping) throw new Error('Invalid station metadata format');
 
-        // Load current_data (for coordinates)
-        const coordResp = await fetch('https://www.geosphere.at/data/stations/tawes/current_data');
-        if (!coordResp.ok) throw new Error(`Failed to load station coordinates: ${coordResp.status}`);
-        const coordData = await coordResp.json();
+        // Fetch coordinates with fallback
+        const coordData = await fetchWithFallback(
+          'https://www.geosphere.at/data/stations/tawes/current_data',
+          './current_data.json'
+        );
         if (!coordData.features) throw new Error('Invalid station coordinates format');
 
-        // Build a map stationId => { lat, lon }
+        // Build coords map
         const coordsMap = {};
         for (const feature of coordData.features) {
           const sid = String(feature.properties.station);
-          const coords = feature.geometry.coordinates; // [lon, lat]
+          const coords = feature.geometry.coordinates;
           coordsMap[sid] = { lat: coords[1], lon: coords[0] };
         }
 
-        // Merge metadata + coordinates into stations object
+        // Merge metadata + coords
         stations = {};
         for (const [stationId, info] of Object.entries(metaData.mapping)) {
-          if (coordsMap[stationId]) {
-            stations[stationId] = {
-              name: info.name,
-              klima_id: info.klima_id,
-              elevation: info.elevation,
-              lat: coordsMap[stationId].lat,
-              lon: coordsMap[stationId].lon
-            };
-          } else {
-            // Station has no coordinates, include anyway but no lat/lon
-            stations[stationId] = {
-              name: info.name,
-              klima_id: info.klima_id,
-              elevation: info.elevation,
-              lat: null,
-              lon: null
-            };
-          }
+          stations[stationId] = {
+            name: info.name,
+            klima_id: info.klima_id,
+            elevation: info.elevation,
+            lat: coordsMap[stationId]?.lat ?? null,
+            lon: coordsMap[stationId]?.lon ?? null
+          };
         }
 
-        // Populate dropdown sorted by name
+        // Populate dropdown (only stations with coords)
         stationSelect.innerHTML = '';
         const sortedStations = Object.entries(stations)
-          .filter(([, s]) => s.lat !== null && s.lon !== null) // only stations with coords
+          .filter(([, s]) => s.lat !== null && s.lon !== null)
           .sort((a, b) => a[1].name.localeCompare(b[1].name));
 
         for (const [stationId, info] of sortedStations) {
@@ -168,7 +172,7 @@
           stationSelect.appendChild(option);
         }
 
-        // Restore saved station or pick first
+        // Restore saved station or select first
         const savedStationId = localStorage.getItem(STORAGE_KEY);
         if (savedStationId && stations[savedStationId]) {
           stationSelect.value = savedStationId;
@@ -185,15 +189,13 @@
       }
     }
 
-    // Fetch temperature data for selected station and update chart
     async function fetchAndUpdateData(stationId) {
       try {
         errorMsg.textContent = '';
         const now = new Date();
         const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
-        let endDate = new Date(now.getTime() + 10 * 60000);
+        const endDate = new Date(now.getTime() + 10 * 60000);
 
-        // Compose API url with parameters=TL for temperature
         const url = new URL('https://dataset.api.hub.geosphere.at/v1/station/historical/tawes-v1-10min');
         url.searchParams.set('parameters', 'TL');
         url.searchParams.set('start', toISOStringNoMs(startDate));
@@ -214,7 +216,6 @@
         const timestamps = data.timestamps.map(ts => new Date(ts));
         const temperatureData = data.features[0].properties.parameters.TL.data;
 
-        // Format labels in 24h time format
         const labels = timestamps.map(ts => ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'}));
         const temps = temperatureData;
 
@@ -281,7 +282,6 @@
       }
     }
 
-    // Start refresh interval for selected station
     function startRefresh(stationId) {
       if (refreshIntervalId) clearInterval(refreshIntervalId);
 
@@ -289,10 +289,9 @@
 
       refreshIntervalId = setInterval(() => {
         fetchAndUpdateData(stationId);
-      }, 300000); // 5 minutes
+      }, 300000);
     }
 
-    // Event: user changes station select
     stationSelect.addEventListener('change', () => {
       const selectedStation = stationSelect.value;
       if (selectedStation) {
@@ -301,7 +300,6 @@
       }
     });
 
-    // Event: user clicks "Use My Location"
     locationBtn.addEventListener('click', () => {
       errorMsg.textContent = '';
       if (!navigator.geolocation) {
@@ -351,7 +349,6 @@
       });
     });
 
-    // Initialize app
     loadStations();
   </script>
 </body>
