@@ -144,11 +144,11 @@
 
   <div class="controls" role="region" aria-label="Station and time range selection">
     <div class="control-group">
-      <label for="station-select">Select Station:</label>
+      <label for="station-select">Station:</label>
       <select id="station-select"></select>
     </div>
     <div class="control-group">
-      <label for="timerange-select">Select Time Range:</label>
+      <label for="timerange-select">Past Range:</label>
       <select id="timerange-select" aria-label="Select time range">
         <option value="1">Past 1 hour</option>
         <option value="12">Past 12 hours</option>
@@ -158,7 +158,7 @@
       </select>
     </div>
     <div class="control-group">
-      <label for="futuredays-select">Forecast Days Ahead:</label>
+      <label for="futuredays-select">Forecast Range:</label>
       <select id="futuredays-select" aria-label="Select forecast days ahead">
         <option value="1" selected>1 day ahead</option>
         <option value="2">2 days ahead</option>
@@ -249,7 +249,7 @@ async function loadStations() {
     if (savedCorsProxy !== null && savedCorsProxy.trim() !== '') {
       corsproxyInput.value = savedCorsProxy.trim();
     } else {
-      
+      corsproxyInput.value = 'https://cors-anywhere.herokuapp.com/';
     }
     
   errorMsg.textContent = '';
@@ -288,7 +288,7 @@ async function loadStations() {
     for (const [stationId, info] of sortedStations) {
       const option = document.createElement('option');
       option.value = stationId;
-      option.textContent = `${info.name} (ID: ${stationId})`;
+      option.textContent = capitalizeWords(info.name);
       stationSelect.appendChild(option);
     }
 
@@ -318,6 +318,14 @@ async function loadStations() {
     errorMsg.textContent = `Error loading stations: ${error.message}`;
   }
 }
+
+function capitalizeWords(str) {
+  return str.toLowerCase().split(/\s+/).map(word => {
+    if (word.length === 0) return '';
+    return word[0].toUpperCase() + word.slice(1);
+  }).join(' ');
+}
+
 
 function findNearestForecastPoint(lat, lon) {
   if (forecastPoints.length === 0 || lat === null || lon === null) return null;
