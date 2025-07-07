@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Temperature Chart - TAWES Stations with CORS Proxy Input</title>
+  <title>Temperature & Rainfall Chart - TAWES Stations with CORS Proxy Input</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -140,7 +140,7 @@
   </style>
 </head>
 <body>
-  <h1>Current Temperature (TAWES Stations)</h1>
+  <h1>Current Temperature & Rainfall (TAWES Stations)</h1>
 
   <div class="controls" role="region" aria-label="Station and time range selection">
     <div class="control-group">
@@ -151,19 +151,22 @@
       <label for="timerange-select">Past Range:</label>
       <select id="timerange-select" aria-label="Select time range">
         <option value="1">Past 1 hour</option>
-        <option value="12">Past 12 hours</option>
-        <option value="24" selected>Past 24 hours</option>
+         <option value="3">Past 3 hours</option>
+        <option value="12" selected>Past 12 hours</option>
+        <option value="24">Past 24 hours</option>
         <option value="72">Past 3 days</option>
-        <option value="168">Past 7 days</option>
+        <option value="120">Past 5 days</option>
       </select>
     </div>
     <div class="control-group">
       <label for="futuredays-select">Forecast Range:</label>
       <select id="futuredays-select" aria-label="Select forecast days ahead">
-        <option value="1" selected>1 day ahead</option>
-        <option value="2">2 days ahead</option>
-        <option value="3">3 days ahead</option>
-        <option value="7">7 days ahead</option>
+        <option value="1">1 hour ahead</option>
+        <option value="3">3 hour ahead</option>
+        <option value="12" selected>12 hours ahead</option>
+        <option value="24">24 hours ahead</option>
+        <option value="72">3 days ahead</option>
+        <option value="120">5 days ahead</option>
       </select>
     </div>
     <div class="control-group">
@@ -173,7 +176,7 @@
     <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
   </div>
 
-  <canvas id="tempChart" width="900" height="400" aria-label="Temperature chart"></canvas>
+  <canvas id="tempChart" width="900" height="400" aria-label="Temperature and Rainfall chart"></canvas>
   <div id="current-temp" aria-live="polite" aria-atomic="true"></div>
   <div id="last-updated"></div>
   <div id="error-msg" role="alert" aria-live="assertive"></div>
@@ -251,7 +254,7 @@ async function loadStations() {
     } else {
       corsproxyInput.value = 'https://cors-anywhere.herokuapp.com/';
     }
-    
+
   errorMsg.textContent = '';
   try {
     await loadForecastPoints();
@@ -351,17 +354,19 @@ async function fetchFlexiForecastForStation(lat, lon) {
   const timestamps = data.timestamps.map(ts => new Date(ts));
   const params = feature.properties.parameters;
   const t2m = params.t2m?.data ?? [];
-  return { timestamps, t2m };
+  const rr = params.rr?.data ?? []; // rainfall data added
+  return { timestamps, t2m, rr };
 }
 
-async function fetchAndUpdateData(stationId, hoursRange, futureDays) {
+async function fetchAndUpdateData(stationId, hoursRange, futureHours) {
   try {
     errorMsg.textContent = '';
     const now = new Date();
     const startDate = new Date(now.getTime() - hoursRange * 3600 * 1000);
     const endDate = now;
+    // Fetch past temperature and rainfall data (10min resolution)
     const url = new URL('https://dataset.api.hub.geosphere.at/v1/station/historical/tawes-v1-10min');
-    url.searchParams.set('parameters', 'TL');
+    url.searchParams.set('parameters', 'TL,RR');
     url.searchParams.set('start', toISOStringNoMs(startDate));
     url.searchParams.set('end', toISOStringNoMs(endDate));
     url.searchParams.set('station_ids', stationId);
@@ -370,67 +375,247 @@ async function fetchAndUpdateData(stationId, hoursRange, futureDays) {
     if (!data.features || data.features.length === 0) throw new Error('No data available for this station.');
     const timestamps = data.timestamps.map(ts => new Date(ts));
     const TL = data.features[0].properties.parameters.TL?.data ?? [];
+    const RR = data.features[0].properties.parameters.RR?.data ?? [];
+
+    // Fetch forecast data
     const lat = stations[stationId]?.lat;
     const lon = stations[stationId]?.lon;
     const forecast = await fetchFlexiForecastForStation(lat, lon);
-    let combinedLabels = timestamps.map(ts => hoursRange > 24 ? ts.toLocaleString([], {year:'2-digit', month:'2-digit', day:'2-digit', hour12:false, hour: '2-digit', minute:'2-digit'}) : ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'}));
+
+    // Format labels for past data
+    const formatLabelPast = ts => {
+      if (hoursRange > 24)
+        return ts.toLocaleString([], {year:'2-digit', month:'2-digit', day:'2-digit', hour12:false, hour: '2-digit', minute:'2-digit'});
+      else
+        return ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'});
+    };
+
+    // Format labels for forecast data
+    const formatLabelForecast = ts => ts.toLocaleString([], {hour12:false, hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'});
+
+    // Initialize variables for forecast filtering
     let forecastLabels = [];
     let forecastTemps = [];
+    let forecastRR = [];
+    let filteredForecastIndices = [];
+    let forecastTimestampsFiltered = [];
+
     if (forecast) {
-      const maxFutureDate = new Date(now.getTime() + futureDays * 24 * 3600 * 1000);
-      const filteredForecastIndices = [];
+      const maxFutureDate = new Date(now.getTime() + futureHours * 3600 * 1000);
+      filteredForecastIndices = [];
       for (let i = 0; i < forecast.timestamps.length; i++) {
         const ts = forecast.timestamps[i];
         if (ts > now && ts <= maxFutureDate) filteredForecastIndices.push(i);
       }
-      forecastLabels = filteredForecastIndices.map(i => forecast.timestamps[i].toLocaleString([], {hour12:false, hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'}));
+      forecastLabels = filteredForecastIndices.map(i => formatLabelForecast(forecast.timestamps[i]));
       forecastTemps = filteredForecastIndices.map(i => forecast.t2m[i]);
+      forecastRR = filteredForecastIndices.map(i => forecast.rr[i] ?? null);
+      forecastTimestampsFiltered = filteredForecastIndices.map(i => forecast.timestamps[i]);
     }
+
+    // Clean past temperature data to exclude trailing nulls
     const lastValidPastIndex = TL.slice().reverse().findIndex(val => val !== null && val !== undefined);
     const pastTempsCleaned = lastValidPastIndex >= 0 ? TL.slice(0, TL.length - lastValidPastIndex) : [];
+    const pastRRCleaned = lastValidPastIndex >= 0 ? RR.slice(0, RR.length - lastValidPastIndex) : [];
+    const pastLabelsCleaned = timestamps.slice(0, pastTempsCleaned.length);
+
+    // Clean forecast temperature and rainfall data to exclude leading nulls
     const firstValidForecastIdx = forecastTemps.findIndex(val => val !== null && val !== undefined);
     const forecastTempsCleaned = firstValidForecastIdx >= 0 ? forecastTemps.slice(firstValidForecastIdx) : [];
+    const forecastRRCleaned = firstValidForecastIdx >= 0 ? forecastRR.slice(firstValidForecastIdx) : [];
     const forecastLabelsCleaned = firstValidForecastIdx >= 0 ? forecastLabels.slice(firstValidForecastIdx) : [];
+    const forecastTimestampsFinal = firstValidForecastIdx >= 0 ? forecastTimestampsFiltered.slice(firstValidForecastIdx) : [];
+
+    // Combine past and forecast data
+    const combinedLabels = [...pastLabelsCleaned.map(ts => formatLabelPast(ts)), ...forecastLabelsCleaned];
     const combinedTemps = [...pastTempsCleaned, ...forecastTempsCleaned];
-    const combinedLabelsAdjusted = [...timestamps.slice(0, pastTempsCleaned.length).map(ts => hoursRange > 24 ? ts.toLocaleString([], {year:'2-digit', month:'2-digit', day:'2-digit', hour12:false, hour: '2-digit', minute:'2-digit'}) : ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'})), ...forecastLabelsCleaned];
+    const combinedRR = [...pastRRCleaned, ...forecastRRCleaned];
+    const combinedTimestamps = [...pastLabelsCleaned, ...forecastTimestampsFinal];
+
     if (tempChart) tempChart.destroy();
+
+    // Prepare annotations for:
+    // 1) Current time vertical line (if in range)
+    // 2) Vertical lines at each midnight start in combinedTimestamps
+
+    // Find index closest to now (current time) in combinedTimestamps for annotation position
+    // If current time is outside range, no line
+
+    const annotations = {};
+
+    // 1) Current time line - find closest index or approximate position
+    // Because x axis is category, annotation lines can be positioned by x value = index or label
+
+    // Find index where combinedTimestamps[i] is closest to now
+    let closestIndexToNow = null;
+    let minDiffMs = Infinity;
+    for(let i=0; i<combinedTimestamps.length; i++) {
+      const diff = Math.abs(combinedTimestamps[i] - now);
+      if(diff < minDiffMs) {
+        minDiffMs = diff;
+        closestIndexToNow = i;
+      }
+    }
+
+    // Only add current time line if now is within the range of combinedTimestamps
+    if (combinedTimestamps.length > 0) {
+      const firstTime = combinedTimestamps[0];
+      const lastTime = combinedTimestamps[combinedTimestamps.length - 1];
+      if (now >= firstTime && now <= lastTime && closestIndexToNow !== null) {
+        annotations.currentTimeLine = {
+          type: 'line',
+          xMin: closestIndexToNow,
+          xMax: closestIndexToNow,
+          borderColor: 'red',
+          borderWidth: 2,
+          borderDash: [6, 4],
+          label: {
+            content: 'Now',
+            enabled: true,
+            position: 'start',
+            backgroundColor: 'red',
+            color: 'white',
+            font: { weight: 'bold' },
+            yAdjust: -10,
+          }
+        };
+      }
+    }
+
+    // 2) Vertical lines at each new day start (midnight)
+    // We scan combinedTimestamps and find indices where date changes at midnight
+
+    // We'll add vertical lines at indices where timestamp is exactly midnight (or closest to it)
+    // Because data may not have exact midnight timestamp, we find timestamp closest to midnight each day
+
+    // Collect unique days from timestamps:
+    const days = new Set();
+
+    combinedTimestamps.forEach(ts => {
+      const d = new Date(ts);
+      d.setHours(0,0,0,0);
+      days.add(d.getTime());
+    });
+
+    // For each day start, find closest index in combinedTimestamps
+    // Add an annotation line for each day start except the very first timestamp's day (to avoid line at start)
+
+    const dayStarts = Array.from(days).sort((a,b) => a-b);
+
+    // Helper to find closest index to a timestamp
+    function findClosestIndex(ts) {
+      let closestIdx = 0;
+      let minDiff = Infinity;
+      for(let i=0; i<combinedTimestamps.length; i++) {
+        const diff = Math.abs(combinedTimestamps[i] - ts);
+        if(diff < minDiff) {
+          minDiff = diff;
+          closestIdx = i;
+        }
+      }
+      return closestIdx;
+    }
+
+    dayStarts.forEach((dayStartTime, idx) => {
+      if (idx === 0) return; // Skip first day start to avoid line at very beginning
+      const indexForDayStart = findClosestIndex(dayStartTime);
+      // Add vertical line annotation
+      annotations['dayStartLine' + idx] = {
+        type: 'line',
+        xMin: indexForDayStart,
+        xMax: indexForDayStart,
+        borderColor: 'rgba(0,0,0,0.15)',
+        borderWidth: 1,
+        borderDash: [2,3],
+        label: {
+          content: new Date(dayStartTime).toLocaleDateString(),
+          enabled: true,
+          position: 'start',
+          backgroundColor: 'rgba(0,0,0,0.15)',
+          color: '#333',
+          font: { size: 9 },
+          yAdjust: -6,
+        }
+      };
+    });
+
     tempChart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: combinedLabelsAdjusted,
-        datasets: [{
-          label: `Mean Temp (°C) - ${stations[stationId].name}`,
-          data: combinedTemps,
-          borderColor: 'rgba(255, 99, 132, 0.8)',
-          backgroundColor: 'rgba(255, 99, 132, 0.2)',
-          fill: false,
-          tension: 0.3,
-          pointRadius: 3,
-          pointHoverRadius: 6,
-          borderWidth: 2,
-          spanGaps: true,
-        }]
+        labels: combinedLabels,
+        datasets: [
+          {
+            label: `Mean Temp (°C) - ${stations[stationId].name}`,
+            data: combinedTemps,
+            borderColor: 'rgba(255, 99, 132, 0.8)',
+            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+            fill: false,
+            tension: 0.3,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+            borderWidth: 2,
+            yAxisID: 'yTemp',
+            spanGaps: true,
+          },
+          {
+            label: `Rainfall (mm) - ${stations[stationId].name}`,
+            data: combinedRR,
+            type: 'bar',
+            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1,
+            yAxisID: 'yRain',
+            spanGaps: true,
+          }
+        ]
       },
       options: {
         responsive: true,
         animation: false,
         maintainAspectRatio: false,
         scales: {
-          x: { title: { display: true, text: 'Time' }, ticks: { maxRotation: 45, minRotation: 30 }, type: 'category' },
-          y: { title: { display: true, text: 'Temperature (°C)' }, suggestedMin: 0, suggestedMax: 40 }
+          x: { 
+            title: { display: true, text: 'Time' }, 
+            ticks: { maxRotation: 45, minRotation: 30 }, 
+            type: 'category' 
+          },
+          yTemp: { 
+            position: 'left',
+            title: { display: true, text: 'Temperature (°C)' },
+            suggestedMin: 0,
+            suggestedMax: 40,
+            grid: { drawOnChartArea: true },
+          },
+          yRain: { 
+            position: 'right',
+            title: { display: true, text: 'Rainfall (mm)' },
+            grid: { drawOnChartArea: false },
+            min: 0,
+          }
         },
         plugins: {
           legend: { display: true },
-          tooltip: { mode: 'index', intersect: false, callbacks: { label: ctx => `Temp: ${ctx.parsed.y} °C` } },
+          tooltip: { 
+            mode: 'index', 
+            intersect: false,
+            callbacks: { 
+              label: ctx => {
+                if(ctx.dataset.label.includes('Temp')) return `Temp: ${ctx.parsed.y} °C`;
+                if(ctx.dataset.label.includes('Rainfall')) return `Rainfall: ${ctx.parsed.y} mm`;
+                return `${ctx.dataset.label}: ${ctx.parsed.y}`;
+              }
+            }
+          },
           annotation: {
             annotations: {
               forecastBox: {
                 type: 'box',
-                xMin: pastTempsCleaned.length,
-                xMax: combinedLabelsAdjusted.length - 1,
+                xMin: pastLabelsCleaned.length,
+                xMax: combinedLabels.length - 1,
                 backgroundColor: 'rgba(200, 200, 255, 0.15)',
                 borderWidth: 0,
-              }
+              },
+              ...annotations
             }
           }
         },
@@ -438,10 +623,16 @@ async function fetchAndUpdateData(stationId, hoursRange, futureDays) {
       },
       plugins: [Chart.registry.getPlugin('annotation')].filter(Boolean)
     });
+
+    // Display latest temperature and rainfall info for past data only
     const lastValidTempIndex = pastTempsCleaned.length - 1;
     const latestTemp = pastTempsCleaned[lastValidTempIndex];
-    const latestTime = combinedLabelsAdjusted[lastValidTempIndex];
-    currentTempDiv.textContent = latestTemp !== null && latestTemp !== undefined ? `Temperature: ${latestTemp} °C (at ${latestTime})` : 'No temperature data available.';
+    const latestRainfall = pastRRCleaned[lastValidTempIndex];
+    const latestTime = pastLabelsCleaned.length > 0 ? formatLabelPast(pastLabelsCleaned[lastValidTempIndex]) : '';
+    const tempText = (latestTemp !== null && latestTemp !== undefined) ? `${latestTemp} °C` : 'No temp data';
+    const rainText = (latestRainfall !== null && latestRainfall !== undefined) ? `${latestRainfall.toFixed(2)} mm` : 'No rainfall data';
+    currentTempDiv.textContent = `Latest (at ${latestTime}): Temperature: ${tempText}, Rainfall: ${rainText}`;
+
     lastUpdatedDiv.textContent = `Last updated: ${new Date().toLocaleString()}`;
   } catch (error) {
     lastUpdatedDiv.textContent = '';
@@ -450,39 +641,39 @@ async function fetchAndUpdateData(stationId, hoursRange, futureDays) {
   }
 }
 
-function startRefresh(stationId, hoursRange, futureDays) {
+function startRefresh(stationId, hoursRange, futureHours) {
   if (refreshIntervalId) clearInterval(refreshIntervalId);
-  fetchAndUpdateData(stationId, hoursRange, futureDays);
-  refreshIntervalId = setInterval(() => fetchAndUpdateData(stationId, hoursRange, futureDays), 300000);
+  fetchAndUpdateData(stationId, hoursRange, futureHours);
+  refreshIntervalId = setInterval(() => fetchAndUpdateData(stationId, hoursRange, futureHours), 300000);
 }
 
 stationSelect.addEventListener('change', () => {
   const selectedStation = stationSelect.value;
   const selectedRange = parseInt(timerangeSelect.value);
-  const selectedFutureDays = parseInt(futuredaysSelect.value);
+  const selectedFutureHours = parseInt(futuredaysSelect.value);
   if (selectedStation) {
     localStorage.setItem(STORAGE_KEY_STATION, selectedStation);
-    startRefresh(selectedStation, selectedRange, selectedFutureDays);
+    startRefresh(selectedStation, selectedRange, selectedFutureHours);
   }
 });
 
 timerangeSelect.addEventListener('change', () => {
   const selectedStation = stationSelect.value;
   const selectedRange = parseInt(timerangeSelect.value);
-  const selectedFutureDays = parseInt(futuredaysSelect.value);
+  const selectedFutureHours = parseInt(futuredaysSelect.value);
   if (selectedStation) {
     localStorage.setItem(STORAGE_KEY_TIMERANGE, selectedRange);
-    startRefresh(selectedStation, selectedRange, selectedFutureDays);
+    startRefresh(selectedStation, selectedRange, selectedFutureHours);
   }
 });
 
 futuredaysSelect.addEventListener('change', () => {
   const selectedStation = stationSelect.value;
   const selectedRange = parseInt(timerangeSelect.value);
-  const selectedFutureDays = parseInt(futuredaysSelect.value);
+  const selectedFutureHours = parseInt(futuredaysSelect.value);
   if (selectedStation) {
-    localStorage.setItem(STORAGE_KEY_FUTUREDAYS, selectedFutureDays);
-    startRefresh(selectedStation, selectedRange, selectedFutureDays);
+    localStorage.setItem(STORAGE_KEY_FUTUREDAYS, selectedFutureHours);
+    startRefresh(selectedStation, selectedRange, selectedFutureHours);
   }
 });
 
@@ -492,9 +683,9 @@ corsproxyInput.addEventListener('input', () => {
   localStorage.setItem(STORAGE_KEY_CORSPROXY, selectedProxy);
   const selectedStation = stationSelect.value;
   const selectedRange = parseInt(timerangeSelect.value);
-  const selectedFutureDays = parseInt(futuredaysSelect.value);
+  const selectedFutureHours = parseInt(futuredaysSelect.value);
   if (selectedStation) {
-    startRefresh(selectedStation, selectedRange, selectedFutureDays);
+    startRefresh(selectedStation, selectedRange, selectedFutureHours);
   }
 });
 
@@ -523,8 +714,8 @@ locationBtn.addEventListener('click', () => {
       stationSelect.value = nearestStationId;
       localStorage.setItem(STORAGE_KEY_STATION, nearestStationId);
       const selectedRange = parseInt(timerangeSelect.value);
-      const selectedFutureDays = parseInt(futuredaysSelect.value);
-      startRefresh(nearestStationId, selectedRange, selectedFutureDays);
+      const selectedFutureHours = parseInt(futuredaysSelect.value);
+      startRefresh(nearestStationId, selectedRange, selectedFutureHours);
       errorMsg.textContent = `Nearest station selected: ${stations[nearestStationId].name}`;
     } else {
       errorMsg.textContent = 'Could not find a nearby station.';
