@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Temperature Chart - TAWES Stations with fallback & responsive</title>
+  <title>Temperature Chart - TAWES Stations with CORS Proxy Input</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -39,6 +39,14 @@
       flex-shrink: 0;
     }
     select {
+      padding: 0.4rem 0.6rem;
+      font-size: 1rem;
+      min-width: 140px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      flex-shrink: 0;
+    }
+    input[type="text"] {
       padding: 0.4rem 0.6rem;
       font-size: 1rem;
       min-width: 140px;
@@ -110,7 +118,7 @@
       label {
         font-size: 1rem;
       }
-      select, #location-btn {
+      select, input[type="text"], #location-btn {
         font-size: 1rem;
         min-width: 110px;
         padding: 0.4rem 0.5rem;
@@ -158,6 +166,10 @@
         <option value="7">7 days ahead</option>
       </select>
     </div>
+    <div class="control-group">
+      <label for="corsproxy-input">CORS Proxy:</label>
+      <input type="text" id="corsproxy-input" aria-label="Enter CORS proxy URL" placeholder="Enter CORS proxy URL">
+    </div>
     <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
   </div>
 
@@ -177,6 +189,7 @@ const lastUpdatedDiv = document.getElementById('last-updated');
 const timerangeSelect = document.getElementById('timerange-select');
 const currentTempDiv = document.getElementById('current-temp');
 const futuredaysSelect = document.getElementById('futuredays-select');
+const corsproxyInput = document.getElementById('corsproxy-input');
 
 let stations = {};
 let forecastPoints = [];
@@ -186,6 +199,7 @@ let refreshIntervalId;
 const STORAGE_KEY_STATION = 'selectedStationId';
 const STORAGE_KEY_TIMERANGE = 'selectedTimeRangeHours';
 const STORAGE_KEY_FUTUREDAYS = 'selectedFutureDays';
+const STORAGE_KEY_CORSPROXY = 'selectedCorsProxy';
 
 function toISOStringNoMs(date) {
   return date.toISOString().split('.')[0] + 'Z';
@@ -197,47 +211,54 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
-async function fetchWithFallback(remoteUrl, localUrl) {
-  try {
-    const response = await fetch(remoteUrl);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
-  } catch (err) {
-    const response = await fetch(localUrl);
-    if (!response.ok) throw new Error(`Fallback HTTP ${response.status}`);
-    return await response.json();
-  }
+function applyCorsProxy(url) {
+  const proxy = corsproxyInput.value.trim() || '';
+  if (!proxy) return url;
+  // Add trailing slash if missing
+  const proxyNormalized = proxy.endsWith('/') ? proxy : proxy + '/';
+  if (url.startsWith(proxyNormalized)) return url;
+  // Remove leading slash from url if present to avoid double slash
+  const urlNormalized = url.startsWith('/') ? url.slice(1) : url;
+  return proxyNormalized + urlNormalized;
+}
+
+async function fetchWithProxy(url) {
+  const proxiedUrl = applyCorsProxy(url);
+  const response = await fetch(proxiedUrl);
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
+  return response.json();
 }
 
 async function loadForecastPoints() {
   try {
-    forecastPoints = await fetchWithFallback(
-      'https://www.geosphere.at/data/forecasts/points',
-      './points_forecast.json'
-    );
+    forecastPoints = await fetchWithProxy('https://www.geosphere.at/data/forecasts/points');
   } catch (err) {
     forecastPoints = [];
+    throw err;
   }
 }
 
 async function loadStations() {
+    const savedCorsProxy = localStorage.getItem(STORAGE_KEY_CORSPROXY);
+
+    // Set CORS proxy input value first, with default if no saved value
+    if (savedCorsProxy !== null && savedCorsProxy.trim() !== '') {
+      corsproxyInput.value = savedCorsProxy.trim();
+    } else {
+      
+    }
+    
   errorMsg.textContent = '';
-  await loadForecastPoints();
   try {
-    const metaData = await fetchWithFallback(
-      'https://www.geosphere.at/data/stations/tawes/points',
-      './points.json'
-    );
+    await loadForecastPoints();
+    const metaData = await fetchWithProxy('https://www.geosphere.at/data/stations/tawes/points');
     if (!metaData.mapping) throw new Error('Invalid station metadata format');
 
-    const coordData = await fetchWithFallback(
-      'https://www.geosphere.at/data/stations/tawes/current_data',
-      './current_data.json'
-    );
+    const coordData = await fetchWithProxy('https://www.geosphere.at/data/stations/tawes/current_data');
     if (!coordData.features) throw new Error('Invalid station coordinates format');
 
     const coordsMap = {};
@@ -271,18 +292,20 @@ async function loadStations() {
       stationSelect.appendChild(option);
     }
 
+    // Load saved values
     const savedStationId = localStorage.getItem(STORAGE_KEY_STATION);
     const savedTimeRange = localStorage.getItem(STORAGE_KEY_TIMERANGE);
     const savedFutureDays = localStorage.getItem(STORAGE_KEY_FUTUREDAYS);
 
+    // Validate and set time range and future days selects
     if (savedTimeRange && timerangeSelect.querySelector(`option[value="${savedTimeRange}"]`)) {
       timerangeSelect.value = savedTimeRange;
     }
-
     if (savedFutureDays && futuredaysSelect.querySelector(`option[value="${savedFutureDays}"]`)) {
       futuredaysSelect.value = savedFutureDays;
     }
 
+    // Set station select and start loading data
     if (savedStationId && stations[savedStationId]) {
       stationSelect.value = savedStationId;
       startRefresh(savedStationId, parseInt(timerangeSelect.value), parseInt(futuredaysSelect.value));
@@ -310,184 +333,87 @@ function findNearestForecastPoint(lat, lon) {
   return nearestPointId;
 }
 
-async function fetchLocalForecastFallback(pointId) {
-  try {
-    const response = await fetch('./points_forecast.json');
-    if (!response.ok) throw new Error(`Fallback forecast HTTP ${response.status}`);
-    const localData = await response.json();
-
-    // localData should be an array or object containing forecast data keyed by point_id
-    // Adjust the below depending on your local JSON structure
-    // For example, if localData is { [point_id]: { timestamps: [...], t2m: [...] }, ... }
-
-    if (!localData[pointId]) throw new Error('No forecast data for point in local fallback');
-
-    const forecast = localData[pointId];
-    // Assuming timestamps are ISO strings, convert to Date
-    const timestamps = forecast.timestamps.map(ts => new Date(ts));
-    const t2m = forecast.t2m;
-
-    return { timestamps, t2m };
-  } catch (err) {
-    console.warn('Local forecast fallback failed:', err);
-    return null;
-  }
-}
-
 async function fetchFlexiForecastForStation(lat, lon) {
   const pointId = findNearestForecastPoint(lat, lon);
   if (!pointId) return null;
-  try {
-    const url = `https://www.geosphere.at/data/forecasts/flexi/${pointId}`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-    if (!data.timestamps || !data.features || data.features.length === 0) throw new Error('Invalid forecast data format.');
-    const feature = data.features[0];
-    const timestamps = data.timestamps.map(ts => new Date(ts));
-    const params = feature.properties.parameters;
-    const t2m = params.t2m?.data ?? [];
-    return { timestamps, t2m };
-  } catch (err) {
-    // Remote forecast failed — try local fallback
-    return await fetchLocalForecastFallback(pointId);
-  }
+  const url = `https://www.geosphere.at/data/forecasts/flexi/${pointId}`;
+  const data = await fetchWithProxy(url);
+  if (!data.timestamps || !data.features || data.features.length === 0) throw new Error('Invalid forecast data format.');
+  const feature = data.features[0];
+  const timestamps = data.timestamps.map(ts => new Date(ts));
+  const params = feature.properties.parameters;
+  const t2m = params.t2m?.data ?? [];
+  return { timestamps, t2m };
 }
 
 async function fetchAndUpdateData(stationId, hoursRange, futureDays) {
   try {
     errorMsg.textContent = '';
     const now = new Date();
-
     const startDate = new Date(now.getTime() - hoursRange * 3600 * 1000);
     const endDate = now;
-
     const url = new URL('https://dataset.api.hub.geosphere.at/v1/station/historical/tawes-v1-10min');
     url.searchParams.set('parameters', 'TL');
     url.searchParams.set('start', toISOStringNoMs(startDate));
     url.searchParams.set('end', toISOStringNoMs(endDate));
     url.searchParams.set('station_ids', stationId);
-
     lastUpdatedDiv.textContent = 'Loading data...';
-
-    const response = await fetch(url.toString());
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-    const data = await response.json();
-
+    const data = await fetchWithProxy(url.toString());
     if (!data.features || data.features.length === 0) throw new Error('No data available for this station.');
-
     const timestamps = data.timestamps.map(ts => new Date(ts));
     const TL = data.features[0].properties.parameters.TL?.data ?? [];
-
     const lat = stations[stationId]?.lat;
     const lon = stations[stationId]?.lon;
     const forecast = await fetchFlexiForecastForStation(lat, lon);
-
-    let combinedLabels = timestamps.map(ts => {
-      if (hoursRange > 24) {
-        return ts.toLocaleString([], {year:'2-digit', month:'2-digit', day:'2-digit', hour12:false, hour: '2-digit', minute:'2-digit'});
-      } else {
-        return ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'});
-      }
-    });
-
+    let combinedLabels = timestamps.map(ts => hoursRange > 24 ? ts.toLocaleString([], {year:'2-digit', month:'2-digit', day:'2-digit', hour12:false, hour: '2-digit', minute:'2-digit'}) : ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'}));
     let forecastLabels = [];
     let forecastTemps = [];
-
     if (forecast) {
       const maxFutureDate = new Date(now.getTime() + futureDays * 24 * 3600 * 1000);
       const filteredForecastIndices = [];
       for (let i = 0; i < forecast.timestamps.length; i++) {
         const ts = forecast.timestamps[i];
-        if (ts > now && ts <= maxFutureDate) {
-          filteredForecastIndices.push(i);
-        }
+        if (ts > now && ts <= maxFutureDate) filteredForecastIndices.push(i);
       }
-      forecastLabels = filteredForecastIndices.map(i =>
-        forecast.timestamps[i].toLocaleString([], {hour12:false, hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'})
-      );
+      forecastLabels = filteredForecastIndices.map(i => forecast.timestamps[i].toLocaleString([], {hour12:false, hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'}));
       forecastTemps = filteredForecastIndices.map(i => forecast.t2m[i]);
     }
-
-    const lastValidPastIndex = (() => {
-      for(let i=TL.length-1; i>=0; i--) {
-        if (TL[i] !== null && TL[i] !== undefined) return i;
-      }
-      return -1;
-    })();
-
-    const pastTempsCleaned = lastValidPastIndex >= 0 ? TL.slice(0, lastValidPastIndex + 1) : [];
-
-    const firstValidForecastIdx = (() => {
-      for(let i=0; i<forecastTemps.length; i++) {
-        if (forecastTemps[i] !== null && forecastTemps[i] !== undefined) return i;
-      }
-      return -1;
-    })();
-
+    const lastValidPastIndex = TL.slice().reverse().findIndex(val => val !== null && val !== undefined);
+    const pastTempsCleaned = lastValidPastIndex >= 0 ? TL.slice(0, TL.length - lastValidPastIndex) : [];
+    const firstValidForecastIdx = forecastTemps.findIndex(val => val !== null && val !== undefined);
     const forecastTempsCleaned = firstValidForecastIdx >= 0 ? forecastTemps.slice(firstValidForecastIdx) : [];
     const forecastLabelsCleaned = firstValidForecastIdx >= 0 ? forecastLabels.slice(firstValidForecastIdx) : [];
-
     const combinedTemps = [...pastTempsCleaned, ...forecastTempsCleaned];
-
-    const combinedLabelsAdjusted = [
-      ...timestamps.slice(0, pastTempsCleaned.length).map(ts => {
-        if (hoursRange > 24) {
-          return ts.toLocaleString([], {year:'2-digit', month:'2-digit', day:'2-digit', hour12:false, hour: '2-digit', minute:'2-digit'});
-        } else {
-          return ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'});
-        }
-      }),
-      ...forecastLabelsCleaned
-    ];
-
+    const combinedLabelsAdjusted = [...timestamps.slice(0, pastTempsCleaned.length).map(ts => hoursRange > 24 ? ts.toLocaleString([], {year:'2-digit', month:'2-digit', day:'2-digit', hour12:false, hour: '2-digit', minute:'2-digit'}) : ts.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'})), ...forecastLabelsCleaned];
     if (tempChart) tempChart.destroy();
-
     tempChart = new Chart(ctx, {
       type: 'line',
       data: {
         labels: combinedLabelsAdjusted,
-        datasets: [
-          {
-            label: `Mean Temp (°C) - ${stations[stationId].name}`,
-            data: combinedTemps,
-            borderColor: 'rgba(255, 99, 132, 0.8)',
-            backgroundColor: 'rgba(255, 99, 132, 0.2)',
-            fill: false,
-            tension: 0.3,
-            pointRadius: 3,
-            pointHoverRadius: 6,
-            borderWidth: 2,
-            spanGaps: true,
-          }
-        ]
+        datasets: [{
+          label: `Mean Temp (°C) - ${stations[stationId].name}`,
+          data: combinedTemps,
+          borderColor: 'rgba(255, 99, 132, 0.8)',
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 3,
+          pointHoverRadius: 6,
+          borderWidth: 2,
+          spanGaps: true,
+        }]
       },
       options: {
         responsive: true,
         animation: false,
         maintainAspectRatio: false,
         scales: {
-          x: {
-            title: { display: true, text: 'Time' },
-            ticks: { maxRotation: 45, minRotation: 30 },
-            type: 'category',
-          },
-          y: {
-            title: { display: true, text: 'Temperature (°C)' },
-            suggestedMin: 0,
-            suggestedMax: 40
-          }
+          x: { title: { display: true, text: 'Time' }, ticks: { maxRotation: 45, minRotation: 30 }, type: 'category' },
+          y: { title: { display: true, text: 'Temperature (°C)' }, suggestedMin: 0, suggestedMax: 40 }
         },
         plugins: {
           legend: { display: true },
-          tooltip: {
-            mode: 'index',
-            intersect: false,
-            callbacks: {
-              label: ctx => `Temp: ${ctx.parsed.y} °C`
-            }
-          },
+          tooltip: { mode: 'index', intersect: false, callbacks: { label: ctx => `Temp: ${ctx.parsed.y} °C` } },
           annotation: {
             annotations: {
               forecastBox: {
@@ -500,25 +426,15 @@ async function fetchAndUpdateData(stationId, hoursRange, futureDays) {
             }
           }
         },
-        interaction: {
-          mode: 'nearest',
-          intersect: false
-        }
+        interaction: { mode: 'nearest', intersect: false }
       },
       plugins: [Chart.registry.getPlugin('annotation')].filter(Boolean)
     });
-
     const lastValidTempIndex = pastTempsCleaned.length - 1;
     const latestTemp = pastTempsCleaned[lastValidTempIndex];
     const latestTime = combinedLabelsAdjusted[lastValidTempIndex];
-    if (latestTemp !== null && latestTemp !== undefined) {
-      currentTempDiv.textContent = `Temperature: ${latestTemp} °C (at ${latestTime})`;
-    } else {
-      currentTempDiv.textContent = 'No temperature data available.';
-    }
-
+    currentTempDiv.textContent = latestTemp !== null && latestTemp !== undefined ? `Temperature: ${latestTemp} °C (at ${latestTime})` : 'No temperature data available.';
     lastUpdatedDiv.textContent = `Last updated: ${new Date().toLocaleString()}`;
-
   } catch (error) {
     lastUpdatedDiv.textContent = '';
     currentTempDiv.textContent = '';
@@ -528,12 +444,8 @@ async function fetchAndUpdateData(stationId, hoursRange, futureDays) {
 
 function startRefresh(stationId, hoursRange, futureDays) {
   if (refreshIntervalId) clearInterval(refreshIntervalId);
-
   fetchAndUpdateData(stationId, hoursRange, futureDays);
-
-  refreshIntervalId = setInterval(() => {
-    fetchAndUpdateData(stationId, hoursRange, futureDays);
-  }, 300000);
+  refreshIntervalId = setInterval(() => fetchAndUpdateData(stationId, hoursRange, futureDays), 300000);
 }
 
 stationSelect.addEventListener('change', () => {
@@ -562,6 +474,18 @@ futuredaysSelect.addEventListener('change', () => {
   const selectedFutureDays = parseInt(futuredaysSelect.value);
   if (selectedStation) {
     localStorage.setItem(STORAGE_KEY_FUTUREDAYS, selectedFutureDays);
+    startRefresh(selectedStation, selectedRange, selectedFutureDays);
+  }
+});
+
+// Use 'input' event to listen for character changes in the CORS proxy input
+corsproxyInput.addEventListener('input', () => {
+  const selectedProxy = corsproxyInput.value.trim();
+  localStorage.setItem(STORAGE_KEY_CORSPROXY, selectedProxy);
+  const selectedStation = stationSelect.value;
+  const selectedRange = parseInt(timerangeSelect.value);
+  const selectedFutureDays = parseInt(futuredaysSelect.value);
+  if (selectedStation) {
     startRefresh(selectedStation, selectedRange, selectedFutureDays);
   }
 });
@@ -603,11 +527,7 @@ locationBtn.addEventListener('click', () => {
     errorMsg.textContent = `Geolocation error: ${err.message}`;
     locationBtn.disabled = false;
     locationBtn.textContent = 'Use My Location';
-  }, {
-    enableHighAccuracy: true,
-    timeout: 10000,
-    maximumAge: 60000
-  });
+  }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
 });
 
 loadStations();
