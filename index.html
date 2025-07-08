@@ -65,6 +65,13 @@
       text-align: center;
       font-size: 0.9rem;
     }
+    #info {
+      margin-top: 0.5rem;
+      font-style: italic;
+      color: #555;
+      text-align: center;
+      font-size: 0.9rem;
+    }
     #error-msg {
       color: #cc0000;
       font-weight: bold;
@@ -166,6 +173,7 @@
   <canvas id="tempChart" width="900" height="400" aria-label="Temperature, Rainfall, Pollen Contamination and Asthmatic Risk chart"></canvas>
   <div id="current-temp" aria-live="polite" aria-atomic="true"></div>
   <div id="last-updated"></div>
+  <div id="info">Data from Geosphere.at and Polleninformation.at</div>
   <div id="error-msg" role="alert" aria-live="assertive"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
