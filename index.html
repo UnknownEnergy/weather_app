@@ -344,7 +344,7 @@ async function loadStations() {
       showAsthmaticRisk = savedAsthmaToggle === 'true';
       asthmaToggle.checked = showAsthmaticRisk;
     } else {
-      asthmaToggle.checked = false; // Default to checked
+      asthmaToggle.checked = false; // Default to unchecked
       showAsthmaticRisk = false;
     }
     if (savedStationId && stations[savedStationId]) {
@@ -438,14 +438,6 @@ function buildPollenCheckboxes(contamination) {
   });
 }
 
-function mapDayriskToFiveScale(dayrisk) {
-  if (dayrisk <= 2) return 1;
-  if (dayrisk <= 4) return 2;
-  if (dayrisk <= 6) return 3;
-  if (dayrisk <= 8) return 4;
-  return 5;
-}
-
 async function fetchAndUpdateData(stationId, hoursRange, futureHours) {
   try {
     errorMsg.textContent = '';
@@ -474,13 +466,14 @@ async function fetchAndUpdateData(stationId, hoursRange, futureHours) {
       pollenContaminationResult.contamination_date_3 || '',
       pollenContaminationResult.contamination_date_4 || ''
     ];
-    asthmaticRiskData = pollenContaminationResult.additionalForecastData?.slice(0,4).map(d => mapDayriskToFiveScale(d.dayrisk)) || [];
-    if(pollenContaminationResult.contamination && pollenContaminationResult.contamination.length > 0) {
+    // Use asthma_weather instead of dayrisk, values are already in range -2 to 2
+    asthmaticRiskData = pollenContaminationResult.additionalForecastData?.slice(0, 4).map(d => 3 - d.asthma_weather) || [];
+    if (pollenContaminationResult.contamination && pollenContaminationResult.contamination.length > 0) {
       buildPollenCheckboxes(pollenContaminationResult.contamination);
     }
     const pastFullHourData = [];
-    for(let i = 0; i < timestamps.length; i++) {
-      if(timestamps[i].getMinutes() === 0 && TL[i] !== null && TL[i] !== undefined) {
+    for (let i = 0; i < timestamps.length; i++) {
+      if (timestamps[i].getMinutes() === 0 && TL[i] !== null && TL[i] !== undefined) {
         pastFullHourData.push({
           ts: timestamps[i],
           temp: TL[i],
@@ -489,13 +482,13 @@ async function fetchAndUpdateData(stationId, hoursRange, futureHours) {
       }
     }
     let forecastFullHourData = [];
-    if(forecast) {
+    if (forecast) {
       const maxFutureDate = new Date(now.getTime() + futureHours * 3600 * 1000);
-      for(let i = 0; i < forecast.timestamps.length; i++) {
+      for (let i = 0; i < forecast.timestamps.length; i++) {
         const ts = forecast.timestamps[i];
-        if(ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate) {
+        if (ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate) {
           const temp = forecast.t2m[i];
-          if(temp !== null && temp !== undefined) {
+          if (temp !== null && temp !== undefined) {
             forecastFullHourData.push({
               ts,
               temp,
@@ -515,7 +508,7 @@ async function fetchAndUpdateData(stationId, hoursRange, futureHours) {
       stationName: stations[stationId].name
     });
     const latestPast = pastFullHourData.length > 0 ? pastFullHourData[pastFullHourData.length - 1] : null;
-    if(latestPast) {
+    if (latestPast) {
       currentTempDiv.textContent = `Latest (at ${latestPast.ts.toLocaleTimeString([], {hour12:false, hour:'2-digit'})}): Temperature: ${latestPast.temp} °C, Rainfall: ${latestPast.rr.toFixed(2)} mm`;
     } else {
       currentTempDiv.textContent = 'No recent data available.';
@@ -864,7 +857,7 @@ function drawChartWithAllData({ combinedData, pollenContaminationResult, contami
           offset: true,
           title: {
             display: showAsthmaticRisk,
-            text: 'Asthmatic Risk (1-5)',
+            text: 'Asthmatic Risk (1-4)',
             font: { size: 14, weight: 'bold' },
             color: '#333'
           },
