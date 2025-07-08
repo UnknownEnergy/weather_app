@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Temperature, Rainfall, Pollen Contamination & Asthmatic Risk</title>
+  <title>Temperature, Rainfall, Pollen & Asthmatic Risk</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -11,7 +11,6 @@
       padding: 0 1rem;
       background: #f7f9fc;
       color: #333;
-      max-width: none;
       width: 100vw;
       box-sizing: border-box;
     }
@@ -29,7 +28,6 @@
     }
     .control-group {
       display: flex;
-      flex-direction: row;
       align-items: center;
       gap: 0.3rem;
       white-space: nowrap;
@@ -38,15 +36,7 @@
       font-weight: bold;
       flex-shrink: 0;
     }
-    select {
-      padding: 0.4rem 0.6rem;
-      font-size: 1rem;
-      min-width: 140px;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      flex-shrink: 0;
-    }
-    input[type="text"] {
+    select, input[type="text"] {
       padding: 0.4rem 0.6rem;
       font-size: 1rem;
       min-width: 140px;
@@ -63,17 +53,11 @@
       border-radius: 4px;
       cursor: pointer;
       transition: background-color 0.2s ease;
-      white-space: nowrap;
       flex-shrink: 0;
       align-self: center;
     }
-    #location-btn:hover:not(:disabled) {
-      background-color: #0056b3;
-    }
-    #location-btn:disabled {
-      background-color: #999;
-      cursor: default;
-    }
+    #location-btn:hover:not(:disabled) { background-color: #0056b3; }
+    #location-btn:disabled { background-color: #999; cursor: default; }
     #last-updated {
       margin-top: 0.5rem;
       font-style: italic;
@@ -120,49 +104,24 @@
       width: 100%;
       height: 700px !important;
       max-height: 50%;
-      display: block;
       margin: 0 auto;
+      display: block;
       object-fit: contain;
     }
     @media (max-width: 480px) {
-      .controls {
-        gap: 0.75rem;
-        justify-content: center;
-      }
-      .control-group {
-        gap: 0.25rem;
-      }
-      label {
-        font-size: 1rem;
-      }
-      select, input[type="text"], #location-btn {
-        font-size: 1rem;
-        min-width: 110px;
-        padding: 0.4rem 0.5rem;
-      }
-      h1 {
-        font-size: 1.3rem;
-        margin-bottom: 1rem;
-      }
-      #last-updated {
-        font-size: 0.85rem;
-      }
-      #error-msg {
-        font-size: 0.9rem;
-      }
-      #current-temp {
-        font-size: 1rem;
-      }
-      #pollen-select {
-        min-width: 150px;
-        max-height: 120px;
-      }
+      .controls { gap: 0.75rem; justify-content: center; }
+      .control-group { gap: 0.25rem; }
+      label, select, input[type="text"], #location-btn { font-size: 1rem; min-width: 110px; padding: 0.4rem 0.5rem; }
+      h1 { font-size: 1.3rem; margin-bottom: 1rem; }
+      #last-updated { font-size: 0.85rem; }
+      #error-msg { font-size: 0.9rem; }
+      #current-temp { font-size: 1rem; }
+      #pollen-select { min-width: 150px; max-height: 120px; }
     }
   </style>
 </head>
 <body>
   <h1>Temperature, Rainfall, Pollen Contamination & Asthmatic Risk</h1>
-
   <div class="controls" role="region" aria-label="Station and time range selection">
     <div class="control-group">
       <label for="station-select">Station:</label>
@@ -204,7 +163,6 @@
     </div>
     <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
   </div>
-
   <canvas id="tempChart" width="900" height="400" aria-label="Temperature, Rainfall, Pollen Contamination and Asthmatic Risk chart"></canvas>
   <div id="current-temp" aria-live="polite" aria-atomic="true"></div>
   <div id="last-updated"></div>
@@ -213,843 +171,460 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0/dist/chartjs-plugin-annotation.min.js"></script>
   <script>
-Chart.register(window['chartjs-plugin-annotation']);
-const stationSelect = document.getElementById('station-select');
-const locationBtn = document.getElementById('location-btn');
-const errorMsg = document.getElementById('error-msg');
-const ctx = document.getElementById('tempChart').getContext('2d');
-const lastUpdatedDiv = document.getElementById('last-updated');
-const timerangeSelect = document.getElementById('timerange-select');
-const currentTempDiv = document.getElementById('current-temp');
-const futuredaysSelect = document.getElementById('futuredays-select');
-const corsproxyInput = document.getElementById('corsproxy-input');
-const pollenSelectDiv = document.getElementById('pollen-select');
-const asthmaToggle = document.getElementById('asthma-toggle');
+    Chart.register(window['chartjs-plugin-annotation']);
 
-let stations = {};
-let forecastPoints = [];
-let tempChart;
-let refreshIntervalId;
-let pollenData = null;
-let selectedPollens = new Set();
-let contaminationDates = [];
-let asthmaticRiskData = [];
-let showAsthmaticRisk = false;
+    // DOM Elements
+    const elements = {
+      stationSelect: document.getElementById('station-select'),
+      locationBtn: document.getElementById('location-btn'),
+      errorMsg: document.getElementById('error-msg'),
+      ctx: document.getElementById('tempChart').getContext('2d'),
+      lastUpdated: document.getElementById('last-updated'),
+      timerangeSelect: document.getElementById('timerange-select'),
+      currentTemp: document.getElementById('current-temp'),
+      futuredaysSelect: document.getElementById('futuredays-select'),
+      corsproxyInput: document.getElementById('corsproxy-input'),
+      pollenSelect: document.getElementById('pollen-select'),
+      asthmaToggle: document.getElementById('asthma-toggle')
+    };
 
-const STORAGE_KEY_STATION = 'selectedStationId';
-const STORAGE_KEY_TIMERANGE = 'selectedTimeRangeHours';
-const STORAGE_KEY_FUTUREDAYS = 'selectedFutureDays';
-const STORAGE_KEY_CORSPROXY = 'selectedCorsProxy';
-const STORAGE_KEY_POLLENS = 'selectedPollens';
-const STORAGE_KEY_ASTHMA_TOGGLE = 'showAsthmaticRisk';
+    // State Variables
+    let stations = {}, forecastPoints = [], tempChart, refreshIntervalId;
+    let pollenData = null, selectedPollens = new Set(), contaminationDates = [];
+    let asthmaticRiskData = [], showAsthmaticRisk = false, combinedData = [];
 
-function toISOStringNoMs(date) {
-  return date.toISOString().split('.')[0] + 'Z';
-}
+    // Storage Keys
+    const STORAGE_KEYS = {
+      STATION: 'selectedStationId',
+      TIMERANGE: 'selectedTimeRangeHours',
+      FUTUREDAYS: 'selectedFutureDays',
+      CORSPROXY: 'selectedCorsProxy',
+      POLLENS: 'selectedPollens',
+      ASTHMA_TOGGLE: 'showAsthmaticRisk'
+    };
 
-function haversineDistance(lat1, lon1, lat2, lon2) {
-  const toRad = angle => angle * Math.PI / 180;
-  const R = 6371000;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function applyCorsProxy(url) {
-  const proxy = corsproxyInput.value.trim() || '';
-  if (!proxy) return url;
-  const proxyNormalized = proxy.endsWith('/') ? proxy : proxy + '/';
-  if (url.startsWith(proxyNormalized)) return url;
-  const urlNormalized = url.startsWith('/') ? url.slice(1) : url;
-  return proxyNormalized + urlNormalized;
-}
-
-async function fetchWithProxy(url) {
-  const proxiedUrl = applyCorsProxy(url);
-  const response = await fetch(proxiedUrl);
-  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
-  return response.json();
-}
-
-async function loadForecastPoints() {
-  try {
-    forecastPoints = await fetchWithProxy('https://www.geosphere.at/data/forecasts/points');
-  } catch (err) {
-    forecastPoints = [];
-    throw err;
-  }
-}
-
-async function loadStations() {
-  const savedCorsProxy = localStorage.getItem(STORAGE_KEY_CORSPROXY);
-  if (savedCorsProxy !== null && savedCorsProxy.trim() !== '') {
-    corsproxyInput.value = savedCorsProxy.trim();
-  } else {
-    corsproxyInput.value = 'https://cors-anywhere-agfr.onrender.com/';
-  }
-  errorMsg.textContent = '';
-  try {
-    await loadForecastPoints();
-    const metaData = await fetchWithProxy('https://www.geosphere.at/data/stations/tawes/points');
-    if (!metaData.mapping) throw new Error('Invalid station metadata format');
-    const coordData = await fetchWithProxy('https://www.geosphere.at/data/stations/tawes/current_data');
-    if (!coordData.features) throw new Error('Invalid station coordinates format');
-    const coordsMap = {};
-    for (const feature of coordData.features) {
-      const sid = String(feature.properties.station);
-      const coords = feature.geometry.coordinates;
-      coordsMap[sid] = { lat: coords[1], lon: coords[0] };
-    }
-    stations = {};
-    for (const [stationId, info] of Object.entries(metaData.mapping)) {
-      stations[stationId] = {
-        name: info.name,
-        klima_id: info.klima_id,
-        elevation: info.elevation,
-        lat: coordsMap[stationId]?.lat ?? null,
-        lon: coordsMap[stationId]?.lon ?? null,
-        point_id: info.klima_id || stationId
-      };
-    }
-    stationSelect.innerHTML = '';
-    const sortedStations = Object.entries(stations)
-      .filter(([, s]) => s.lat !== null && s.lon !== null)
-      .sort((a, b) => a[1].name.localeCompare(b[1].name));
-    for (const [stationId, info] of sortedStations) {
-      const option = document.createElement('option');
-      option.value = stationId;
-      option.textContent = capitalizeWords(info.name);
-      stationSelect.appendChild(option);
-    }
-    const savedStationId = localStorage.getItem(STORAGE_KEY_STATION);
-    const savedTimeRange = localStorage.getItem(STORAGE_KEY_TIMERANGE);
-    const savedFutureDays = localStorage.getItem(STORAGE_KEY_FUTUREDAYS);
-    const savedPollensStr = localStorage.getItem(STORAGE_KEY_POLLENS);
-    const savedAsthmaToggle = localStorage.getItem(STORAGE_KEY_ASTHMA_TOGGLE);
-    if (savedTimeRange && timerangeSelect.querySelector(`option[value="${savedTimeRange}"]`)) {
-      timerangeSelect.value = savedTimeRange;
-    }
-    if (savedFutureDays && futuredaysSelect.querySelector(`option[value="${savedFutureDays}"]`)) {
-      futuredaysSelect.value = savedFutureDays;
-    }
-    if (savedPollensStr) {
-      try {
-        const arr = JSON.parse(savedPollensStr);
-        if (Array.isArray(arr)) selectedPollens = new Set(arr);
-      } catch {}
-    }
-    if (savedAsthmaToggle !== null) {
-      showAsthmaticRisk = savedAsthmaToggle === 'true';
-      asthmaToggle.checked = showAsthmaticRisk;
-    } else {
-      asthmaToggle.checked = false; // Default to unchecked
-      showAsthmaticRisk = false;
-    }
-    if (savedStationId && stations[savedStationId]) {
-      stationSelect.value = savedStationId;
-      startRefresh(savedStationId, parseInt(timerangeSelect.value), parseInt(futuredaysSelect.value));
-    } else if (stationSelect.options.length > 0) {
-      stationSelect.selectedIndex = 0;
-      startRefresh(stationSelect.value, parseInt(timerangeSelect.value), parseInt(futuredaysSelect.value));
-    }
-  } catch (error) {
-    lastUpdatedDiv.textContent = '';
-    errorMsg.textContent = `Error loading stations: ${error.message}`;
-  }
-}
-
-function capitalizeWords(str) {
-  return str.toLowerCase().split(/\s+/).map(word => {
-    if (word.length === 0) return '';
-    return word[0].toUpperCase() + word.slice(1);
-  }).join(' ');
-}
-
-function findNearestForecastPoint(lat, lon) {
-  if (forecastPoints.length === 0 || lat === null || lon === null) return null;
-  let minDist = Infinity;
-  let nearestPointId = null;
-  for (const pt of forecastPoints) {
-    const dist = haversineDistance(lat, lon, pt.lat, pt.lon);
-    if (dist < minDist) {
-      minDist = dist;
-      nearestPointId = pt.point_id;
-    }
-  }
-  return nearestPointId;
-}
-
-async function fetchFlexiForecastForStation(lat, lon) {
-  const pointId = findNearestForecastPoint(lat, lon);
-  if (!pointId) return null;
-  const url = `https://www.geosphere.at/data/forecasts/flexi/${pointId}`;
-  const data = await fetchWithProxy(url);
-  if (!data.timestamps || !data.features || data.features.length === 0) throw new Error('Invalid forecast data format.');
-  const feature = data.features[0];
-  const timestamps = data.timestamps.map(ts => new Date(ts));
-  const params = feature.properties.parameters;
-  const t2m = params.t2m?.data ?? [];
-  const rr = params.rr?.data ?? [];
-  return { timestamps, t2m, rr };
-}
-
-function interpolateTemp(ts1, temp1, ts2, temp2, targetTs) {
-  const t1 = ts1.getTime();
-  const t2 = ts2.getTime();
-  const t = targetTs.getTime();
-  if (t2 === t1) return temp1;
-  const ratio = (t - t1) / (t2 - t1);
-  return temp1 + ratio * (temp2 - temp1);
-}
-
-async function fetchPollenData(lat, lon) {
-  const url = `https://www.polleninformation.at/index.php?eID=appinterface&pure_json=1&lang_code=de&lang_id=0&action=getFullContaminationData&type=gps&value%5Blatitude%5D=${lat}&value%5Blongitude%5D=${lon}&country_id=1&personal_contamination=false&sensitivity=0&country=AT`;
-  const data = await fetchWithProxy(url);
-  if (!data.success || !data.result) throw new Error('Invalid pollen contamination data');
-  return data.result;
-}
-
-function buildPollenCheckboxes(contamination) {
-  pollenSelectDiv.innerHTML = '';
-  contamination.forEach(p => {
-    const id = `pollen-checkbox-${p.poll_id}`;
-    const checked = selectedPollens.has(String(p.poll_id));
-    const label = document.createElement('label');
-    label.htmlFor = id;
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.id = id;
-    checkbox.value = p.poll_id;
-    checkbox.checked = checked;
-    checkbox.setAttribute('aria-label', `Toggle contamination for ${p.poll_title}`);
-    label.appendChild(checkbox);
-    const span = document.createElement('span');
-    span.textContent = p.poll_title;
-    label.appendChild(span);
-    pollenSelectDiv.appendChild(label);
-    checkbox.addEventListener('change', () => {
-      if (checkbox.checked) selectedPollens.add(checkbox.value);
-      else selectedPollens.delete(checkbox.value);
-      localStorage.setItem(STORAGE_KEY_POLLENS, JSON.stringify(Array.from(selectedPollens)));
-      if (pollenData) drawChartWithAllData(pollenData);
-    });
-  });
-}
-
-async function fetchAndUpdateData(stationId, hoursRange, futureHours) {
-  try {
-    errorMsg.textContent = '';
-    const now = new Date();
-    const startDate = new Date(now.getTime() - hoursRange * 3600 * 1000);
-    const endDate = now;
-    const url = new URL('https://dataset.api.hub.geosphere.at/v1/station/historical/tawes-v1-10min');
-    url.searchParams.set('parameters', 'TL,RR');
-    url.searchParams.set('start', toISOStringNoMs(startDate));
-    url.searchParams.set('end', toISOStringNoMs(endDate));
-    url.searchParams.set('station_ids', stationId);
-    lastUpdatedDiv.textContent = 'Loading data...';
-    const data = await fetchWithProxy(url.toString());
-    if (!data.features || data.features.length === 0) throw new Error('No data available for this station.');
-    const timestamps = data.timestamps.map(ts => new Date(ts));
-    const TL = data.features[0].properties.parameters.TL?.data ?? [];
-    const RR = data.features[0].properties.parameters.RR?.data ?? [];
-    const lat = stations[stationId]?.lat;
-    const lon = stations[stationId]?.lon;
-    const forecast = await fetchFlexiForecastForStation(lat, lon);
-    const pollenContaminationResult = await fetchPollenData(lat, lon);
-    pollenData = pollenContaminationResult;
-    contaminationDates = [
-      pollenContaminationResult.contamination_date_1 || 'Today',
-      pollenContaminationResult.contamination_date_2 || '',
-      pollenContaminationResult.contamination_date_3 || '',
-      pollenContaminationResult.contamination_date_4 || ''
-    ];
-    // Use asthma_weather instead of dayrisk, values are already in range -2 to 2
-    asthmaticRiskData = pollenContaminationResult.additionalForecastData?.slice(0, 4).map(d => 3 - d.asthma_weather) || [];
-    if (pollenContaminationResult.contamination && pollenContaminationResult.contamination.length > 0) {
-      buildPollenCheckboxes(pollenContaminationResult.contamination);
-    }
-    const pastFullHourData = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      if (timestamps[i].getMinutes() === 0 && TL[i] !== null && TL[i] !== undefined) {
-        pastFullHourData.push({
-          ts: timestamps[i],
-          temp: TL[i],
-          rr: RR[i] ?? 0
-        });
-      }
-    }
-    let forecastFullHourData = [];
-    if (forecast) {
-      const maxFutureDate = new Date(now.getTime() + futureHours * 3600 * 1000);
-      for (let i = 0; i < forecast.timestamps.length; i++) {
-        const ts = forecast.timestamps[i];
-        if (ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate) {
-          const temp = forecast.t2m[i];
-          if (temp !== null && temp !== undefined) {
-            forecastFullHourData.push({
-              ts,
-              temp,
-              rr: forecast.rr[i] ?? 0
-            });
-          }
-        }
-      }
-    }
-    const combinedData = [...pastFullHourData, ...forecastFullHourData];
-    drawChartWithAllData({
-      combinedData,
-      pollenContaminationResult,
-      contaminationDates,
-      asthmaticRiskData,
-      selectedPollens,
-      stationName: stations[stationId].name
-    });
-    const latestPast = pastFullHourData.length > 0 ? pastFullHourData[pastFullHourData.length - 1] : null;
-    if (latestPast) {
-      currentTempDiv.textContent = `Latest (at ${latestPast.ts.toLocaleTimeString([], {hour12:false, hour:'2-digit'})}): Temperature: ${latestPast.temp} °C, Rainfall: ${latestPast.rr.toFixed(2)} mm`;
-    } else {
-      currentTempDiv.textContent = 'No recent data available.';
-    }
-    lastUpdatedDiv.textContent = `Last updated: ${new Date().toLocaleString()}`;
-  } catch (error) {
-    lastUpdatedDiv.textContent = '';
-    currentTempDiv.textContent = '';
-    errorMsg.textContent = `Error loading data: ${error.message}`;
-  }
-}
-
-function drawChartWithAllData({ combinedData, pollenContaminationResult, contaminationDates, asthmaticRiskData, selectedPollens, stationName }) {
-  // Determine the date range of combinedData
-  const startDate = new Date(combinedData[0].ts);
-  const endDate = new Date(combinedData[combinedData.length - 1].ts);
-  const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1; // Number of days in data
-
-  // Use all combinedData (hourly data for all days in range)
-  const labels = combinedData.map(d => d.ts.toLocaleString([], { hour12: false, hour: '2-digit', minute: '2-digit'}));
-  const temps = combinedData.map(d => d.temp);
-  const rains = combinedData.map(d => d.rr);
-
-  // Set reference start date as today at midnight
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // Normalize to midnight of today
-
-  // Helper function to map daily values to hourly data points strictly for relevant days
-  const mapDailyToHourly = (dailyData, numDays) => {
-    const hourlyData = [];
-    for (let i = 0; i < combinedData.length; i++) {
-      const currentDate = new Date(combinedData[i].ts);
-      currentDate.setHours(0, 0, 0, 0); // Normalize to midnight for comparison
-      // Calculate the day index relative to today (day 0 is today)
-      const dayIndex = Math.floor((currentDate - today) / (1000 * 60 * 60 * 24));
-      // Only assign data if within the range of available days (today to numDays ahead)
-      if (dayIndex >= 0 && dayIndex < numDays && dailyData[dayIndex] !== undefined && dailyData[dayIndex] !== null) {
-        hourlyData.push(dailyData[dayIndex]);
-      } else {
-        hourlyData.push(null); // Use null instead of 0 to avoid drawing outside range (Chart.js will skip null values)
-      }
-    }
-    return hourlyData;
-  };
-
-  // Pollen contamination data (daily values as bar charts, 4 days starting from today)
-  const contaminationDatasets = [];
-  if (pollenContaminationResult && pollenContaminationResult.contamination) {
-    pollenContaminationResult.contamination.forEach(p => {
-      if (selectedPollens.has(String(p.poll_id))) {
-        const dailyValues = [
-          p.contamination_1 ?? 0, // Day 0 (today)
-          p.contamination_2 ?? 0, // Day 1 (tomorrow)
-          p.contamination_3 ?? 0, // Day 2
-          p.contamination_4 ?? 0, // Day 3
+    // Utility Functions
+    const utils = {
+      toISOStringNoMs: date => date.toISOString().split('.')[0] + 'Z',
+      capitalizeWords: str => str.toLowerCase().split(/\s+/).map(word => word ? word[0].toUpperCase() + word.slice(1) : '').join(' '),
+      haversineDistance: (lat1, lon1, lat2, lon2) => {
+        const toRad = angle => angle * Math.PI / 180, R = 6371000;
+        const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      },
+      applyCorsProxy: url => {
+        const proxy = elements.corsproxyInput.value.trim();
+        if (!proxy) return url;
+        const proxyNormalized = proxy.endsWith('/') ? proxy : proxy + '/';
+        return url.startsWith(proxyNormalized) ? url : proxyNormalized + (url.startsWith('/') ? url.slice(1) : url);
+      },
+      fetchWithProxy: async url => {
+        const response = await fetch(utils.applyCorsProxy(url));
+        if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
+        return response.json();
+      },
+      interpolateTemp: (ts1, temp1, ts2, temp2, targetTs) => {
+        const t1 = ts1.getTime(), t2 = ts2.getTime(), t = targetTs.getTime();
+        return t2 === t1 ? temp1 : temp1 + ((t - t1) / (t2 - t1)) * (temp2 - temp1);
+      },
+      randomColorForId: (id, opacity = 1) => {
+        const colors = [
+          'rgba(255, 99, 132, OPACITY)', 'rgba(54, 162, 235, OPACITY)', 'rgba(255, 206, 86, OPACITY)',
+          'rgba(75, 192, 192, OPACITY)', 'rgba(153, 102, 255, OPACITY)', 'rgba(255, 159, 64, OPACITY)',
+          'rgba(199, 199, 199, OPACITY)', 'rgba(83, 102, 255, OPACITY)', 'rgba(255, 99, 255, OPACITY)',
+          'rgba(99, 255, 132, OPACITY)'
         ];
-        const hourlyPollenData = mapDailyToHourly(dailyValues, 4); // Map to exact hours of each of the 4 days
-        contaminationDatasets.push({
+        return colors[Number(id) % colors.length].replace('OPACITY', opacity);
+      }
+    };
+
+    // Data Fetching
+    const dataFetch = {
+      loadForecastPoints: async () => {
+        forecastPoints = await utils.fetchWithProxy('https://www.geosphere.at/data/forecasts/points') || [];
+      },
+      findNearestForecastPoint: (lat, lon) => {
+        if (!forecastPoints.length || lat === null || lon === null) return null;
+        let minDist = Infinity, nearestPointId = null;
+        for (const pt of forecastPoints) {
+          const dist = utils.haversineDistance(lat, lon, pt.lat, pt.lon);
+          if (dist < minDist) { minDist = dist; nearestPointId = pt.point_id; }
+        }
+        return nearestPointId;
+      },
+      fetchFlexiForecast: async (lat, lon) => {
+        const pointId = dataFetch.findNearestForecastPoint(lat, lon);
+        if (!pointId) return null;
+        const data = await utils.fetchWithProxy(`https://www.geosphere.at/data/forecasts/flexi/${pointId}`);
+        if (!data.timestamps || !data.features?.length) throw new Error('Invalid forecast data format.');
+        const { timestamps, features: [{ properties: { parameters } }] } = data;
+        return {
+          timestamps: timestamps.map(ts => new Date(ts)),
+          t2m: parameters.t2m?.data ?? [],
+          rr: parameters.rr?.data ?? []
+        };
+      },
+      fetchPollenData: async (lat, lon) => {
+        const url = `https://www.polleninformation.at/index.php?eID=appinterface&pure_json=1&lang_code=de&lang_id=0&action=getFullContaminationData&type=gps&value%5Blatitude%5D=${lat}&value%5Blongitude%5D=${lon}&country_id=1&personal_contamination=false&sensitivity=0&country=AT`;
+        const data = await utils.fetchWithProxy(url);
+        if (!data.success || !data.result) throw new Error('Invalid pollen contamination data');
+        return data.result;
+      },
+      fetchStationData: async (stationId, hoursRange) => {
+        const now = new Date(), startDate = new Date(now.getTime() - hoursRange * 3600 * 1000);
+        const url = new URL('https://dataset.api.hub.geosphere.at/v1/station/historical/tawes-v1-10min');
+        url.searchParams.set('parameters', 'TL,RR');
+        url.searchParams.set('start', utils.toISOStringNoMs(startDate));
+        url.searchParams.set('end', utils.toISOStringNoMs(now));
+        url.searchParams.set('station_ids', stationId);
+        const data = await utils.fetchWithProxy(url.toString());
+        if (!data.features?.length) throw new Error('No data available for this station.');
+        return data;
+      }
+    };
+
+    // UI Updates
+    const ui = {
+      buildPollenCheckboxes: contamination => {
+        elements.pollenSelect.innerHTML = '';
+        contamination.forEach(p => {
+          const id = `pollen-checkbox-${p.poll_id}`, checked = selectedPollens.has(String(p.poll_id));
+          const label = document.createElement('label');
+          label.htmlFor = id;
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.id = id;
+          checkbox.value = p.poll_id;
+          checkbox.checked = checked;
+          checkbox.setAttribute('aria-label', `Toggle contamination for ${p.poll_title}`);
+          label.append(checkbox, Object.assign(document.createElement('span'), { textContent: p.poll_title }));
+          elements.pollenSelect.appendChild(label);
+          checkbox.addEventListener('change', () => {
+            checkbox.checked ? selectedPollens.add(checkbox.value) : selectedPollens.delete(checkbox.value);
+            localStorage.setItem(STORAGE_KEYS.POLLENS, JSON.stringify([...selectedPollens]));
+            if (pollenData) ui.drawChart();
+          });
+        });
+      },
+      updateCurrentTemp: data => {
+        const latest = data.length ? data[data.length - 1] : null;
+        elements.currentTemp.textContent = latest
+          ? `Latest (at ${latest.ts.toLocaleTimeString([], { hour12: false, hour: '2-digit' })}): Temperature: ${latest.temp} °C, Rainfall: ${latest.rr.toFixed(2)} mm`
+          : 'No recent data available.';
+      },
+      drawChart: () => {
+        if (tempChart) tempChart.destroy();
+        const startDate = new Date(combinedData[0].ts), endDate = new Date(combinedData[combinedData.length - 1].ts);
+        const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        const labels = combinedData.map(d => d.ts.toLocaleString([], { hour12: false, hour: '2-digit', minute: '2-digit' }));
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+
+        const mapDailyToHourly = (dailyData, numDays) => combinedData.map(({ ts }) => {
+          const currentDate = new Date(ts); currentDate.setHours(0, 0, 0, 0);
+          const dayIndex = Math.floor((currentDate - today) / (1000 * 60 * 60 * 24));
+          return dayIndex >= 0 && dayIndex < numDays && dailyData[dayIndex] !== undefined ? dailyData[dayIndex] : null;
+        });
+
+        const contaminationDatasets = pollenData?.contamination?.filter(p => selectedPollens.has(String(p.poll_id))).map(p => ({
           label: p.poll_title,
-          data: hourlyPollenData,
-          backgroundColor: randomColorForId(p.poll_id, 0.6),
-          borderColor: randomColorForId(p.poll_id, 1),
+          data: mapDailyToHourly([p.contamination_1 ?? 0, p.contamination_2 ?? 0, p.contamination_3 ?? 0, p.contamination_4 ?? 0], 4),
+          backgroundColor: utils.randomColorForId(p.poll_id, 0.6),
+          borderColor: utils.randomColorForId(p.poll_id, 1),
           stack: 'pollen',
           type: 'bar',
           yAxisID: 'yPollen',
           borderWidth: 1.5,
-          hoverBackgroundColor: randomColorForId(p.poll_id, 0.8),
+          hoverBackgroundColor: utils.randomColorForId(p.poll_id, 0.8),
           hoverBorderWidth: 2,
-          hoverBorderColor: randomColorForId(p.poll_id, 1),
+          hoverBorderColor: utils.randomColorForId(p.poll_id, 1),
           barPercentage: 0.8,
           categoryPercentage: 0.9
-        });
-      }
-    });
-  }
+        })) || [];
 
-  // Asthmatic risk data (daily values as line chart, up to available days starting from today)
-  const asthmaDataset = {
-    label: 'Asthmatic Risk',
-    data: mapDailyToHourly(asthmaticRiskData, asthmaticRiskData.length), // Map to exact hours of each relevant day
-    borderColor: 'rgba(255, 165, 0, 0.9)',
-    backgroundColor: 'rgba(255, 165, 0, 0.2)',
-    yAxisID: 'yAsthma',
-    type: 'line',
-    fill: false, // Disable fill to avoid visual artifacts outside data range
-    tension: 0.4,
-    pointRadius: 4,
-    pointHoverRadius: 6,
-    pointBackgroundColor: 'rgba(255, 165, 0, 1)',
-    pointBorderColor: 'rgba(255, 165, 0, 1)',
-    pointBorderWidth: 1.5,
-    borderWidth: 2.5,
-    spanGaps: true,
-    order: 2
-  };
+        const datasets = [
+          {
+            label: `Mean Temp (°C)`,
+            data: combinedData.map(d => d.temp),
+            borderColor: 'rgba(255, 99, 132, 0.9)',
+            backgroundColor: 'rgba(255, 99, 132, 0.15)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointBackgroundColor: 'rgba(255, 99, 132, 1)',
+            pointBorderColor: 'rgba(255, 99, 132, 1)',
+            pointBorderWidth: 1,
+            borderWidth: 2.5,
+            yAxisID: 'yTemp',
+            spanGaps: true,
+            order: 3
+          },
+          {
+            label: `Rainfall (mm)`,
+            data: combinedData.map(d => d.rr),
+            type: 'bar',
+            backgroundColor: 'rgba(54, 162, 235, 0.6)',
+            borderColor: 'rgba(54, 162, 235, 0.9)',
+            borderWidth: 1.5,
+            hoverBackgroundColor: 'rgba(54, 162, 235, 0.8)',
+            hoverBorderWidth: 2,
+            hoverBorderColor: 'rgba(54, 162, 235, 1)',
+            barPercentage: 0.8,
+            categoryPercentage: 0.9,
+            yAxisID: 'yRain',
+            spanGaps: true,
+            order: 1
+          },
+          ...contaminationDatasets
+        ];
 
-  // Rest of the function remains the same, but ensuring datasets are built correctly
-  if (tempChart) tempChart.destroy();
-
-  // Handle "now" line for hourly data (unchanged)
-  let now = new Date();
-  let nowX = null;
-  let nowTemp = null;
-  if (combinedData.length === 1) {
-    const diffMs = Math.abs(combinedData[0].ts.getTime() - now.getTime());
-    if (diffMs <= 30 * 60 * 1000) {
-      nowX = 0;
-      nowTemp = combinedData[0].temp;
-    }
-  } else if (combinedData.length > 1) {
-    for (let i = 0; i < combinedData.length - 1; i++) {
-      const t0 = combinedData[i].ts.getTime();
-      const t1 = combinedData[i + 1].ts.getTime();
-      if (now.getTime() >= t0 && now.getTime() <= t1) {
-        const frac = (now.getTime() - t0) / (t1 - t0);
-        nowX = i + frac;
-        nowTemp = interpolateTemp(combinedData[i].ts, combinedData[i].temp, combinedData[i + 1].ts, combinedData[i + 1].temp, now);
-        break;
-      }
-    }
-    if (nowX === null) {
-      if (now.getTime() < combinedData[0].ts.getTime()) {
-        nowX = 0;
-        nowTemp = combinedData[0].temp;
-      } else if (now.getTime() > combinedData[combinedData.length - 1].ts.getTime()) {
-        nowX = combinedData.length - 1;
-        nowTemp = combinedData[combinedData.length - 1].temp;
-      }
-    }
-  }
-
-  // Midnight indices for separating days (unchanged)
-  const midnightIndices = [];
-  for (let i = 0; i < combinedData.length; i++) {
-    const ts = combinedData[i].ts;
-    if (ts.getHours() === 0 && ts.getMinutes() === 0) {
-      if (i > 0) midnightIndices.push(i);
-    }
-  }
-
-  // Annotations for midnight lines and "now" line (unchanged)
-  const annotations = {};
-  midnightIndices.forEach((idx, i) => {
-    const ts = combinedData[idx].ts;
-    annotations['midnightLine' + i] = {
-      type: 'line',
-      xMin: idx,
-      xMax: idx,
-      borderColor: 'rgba(100, 100, 100, 0.3)',
-      borderWidth: 1.5,
-      borderDash: [5, 5],
-      label: {
-        content: ts.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }),
-        enabled: true,
-        position: 'top',
-        backgroundColor: 'rgba(50, 50, 50, 0.7)',
-        color: '#fff',
-        font: { size: 10, weight: 'bold' },
-        yAdjust: 0,
-        padding: 4
-      }
-    };
-  });
-
-  if (nowX !== null && nowTemp !== null) {
-    annotations['nowLine'] = {
-      type: 'line',
-      xMin: nowX,
-      xMax: nowX,
-      borderColor: 'rgba(220, 53, 69, 0.8)',
-      borderWidth: 2,
-      borderDash: [6, 4],
-      label: {
-        content: `Now: ${nowTemp.toFixed(1)} °C`,
-        enabled: true,
-        position: 'top',
-        backgroundColor: 'rgba(220, 53, 69, 0.9)',
-        color: 'white',
-        font: { weight: 'bold', size: 11 },
-        yAdjust: 0,
-        xAdjust: 0,
-        padding: 6
-      }
-    };
-  }
-
-  // Combine datasets (hourly for temp/rain, repeated daily values for pollen/asthma)
-  const datasets = [
-    {
-      label: `Mean Temp (°C) - ${stationName}`,
-      data: temps,
-      borderColor: 'rgba(255, 99, 132, 0.9)',
-      backgroundColor: 'rgba(255, 99, 132, 0.15)',
-      fill: true,
-      tension: 0.4,
-      pointRadius: 3,
-      pointHoverRadius: 5,
-      pointBackgroundColor: 'rgba(255, 99, 132, 1)',
-      pointBorderColor: 'rgba(255, 99, 132, 1)',
-      pointBorderWidth: 1,
-      borderWidth: 2.5,
-      yAxisID: 'yTemp',
-      spanGaps: true,
-      order: 3
-    },
-    {
-      label: `Rainfall (mm) - ${stationName}`,
-      data: rains,
-      type: 'bar',
-      backgroundColor: 'rgba(54, 162, 235, 0.6)',
-      borderColor: 'rgba(54, 162, 235, 0.9)',
-      borderWidth: 1.5,
-      hoverBackgroundColor: 'rgba(54, 162, 235, 0.8)',
-      hoverBorderWidth: 2,
-      hoverBorderColor: 'rgba(54, 162, 235, 1)',
-      barPercentage: 0.8,
-      categoryPercentage: 0.9,
-      yAxisID: 'yRain',
-      spanGaps: true,
-      order: 1
-    },
-    ...contaminationDatasets
-  ];
-
-  // Only add asthmatic risk dataset if toggle is enabled
-  if (showAsthmaticRisk) {
-    datasets.push(asthmaDataset);
-  }
-
-  // Rest of the chart configuration remains mostly unchanged, but shown for completeness
-  function randomColorForId(id, opacity = 1) {
-    const r = (id * 123456) % 256;
-    const g = (id * 654321) % 256;
-    const b = (id * 987654) % 256;
-    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-  }
-
-  tempChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets
-    },
-    options: {
-      responsive: true,
-      animation: {
-        duration: 1000,
-        easing: 'easeInOutQuad'
-      },
-      maintainAspectRatio: false,
-      layout: {
-        padding: {
-          left: 10,
-          right: 10,
-          top: 10,
-          bottom: 10
+        if (showAsthmaticRisk) {
+          datasets.push({
+            label: 'Asthmatic Risk',
+            data: mapDailyToHourly(asthmaticRiskData, asthmaticRiskData.length),
+            borderColor: 'rgba(255, 165, 0, 0.9)',
+            backgroundColor: 'rgba(255, 165, 0, 0.2)',
+            yAxisID: 'yAsthma',
+            type: 'line',
+            fill: false,
+            tension: 0.4,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: 'rgba(255, 165, 0, 1)',
+            pointBorderColor: 'rgba(255, 165, 0, 1)',
+            pointBorderWidth: 1.5,
+            borderWidth: 2.5,
+            spanGaps: true,
+            order: 2
+          });
         }
-      },
-      scales: {
-        x: {
-          title: {
-            display: true,
-            text: `Time (Hours over ${daysDiff} Day${daysDiff > 1 ? 's' : ''})`,
-            font: { size: 14, weight: 'bold' },
-            color: '#333'
-          },
-          ticks: {
-            maxRotation: 45,
-            minRotation: 30,
-            autoSkip: true,
-            maxTicksLimit: 24 * daysDiff,
-            font: { size: 11, family: 'Arial, sans-serif' },
-            color: '#555'
-          },
-          grid: {
-            drawOnChartArea: false,
-            color: 'rgba(0, 0, 0, 0.1)'
-          },
-          type: 'category'
-        },
-        yTemp: {
-          position: 'left',
-          title: {
-            display: true,
-            text: 'Temperature (°C)',
-            font: { size: 14, weight: 'bold' },
-            color: '#333'
-          },
-          suggestedMin: 0,
-          suggestedMax: 40,
-          grid: {
-            drawOnChartArea: true,
-            color: 'rgba(0, 0, 0, 0.05)',
-            lineWidth: 1
-          },
-          ticks: {
-            stepSize: 5,
-            font: { size: 11, family: 'Arial, sans-serif' },
-            color: '#555'
-          }
-        },
-        yRain: {
-          position: 'right',
-          title: {
-            display: true,
-            text: 'Rainfall (mm)',
-            font: { size: 14, weight: 'bold' },
-            color: '#333'
-          },
-          grid: {
-            drawOnChartArea: false,
-            color: 'rgba(0, 0, 0, 0.05)'
-          },
-          min: 0,
-          max: 15,
-          ticks: {
-            stepSize: 3,
-            font: { size: 11, family: 'Arial, sans-serif' },
-            color: '#555'
-          }
-        },
-        yPollen: {
-          position: 'right',
-          offset: true,
-          title: {
-            display: true,
-            text: 'Pollen Contamination (0-4)',
-            font: { size: 14, weight: 'bold' },
-            color: '#333'
-          },
-          grid: {
-            drawOnChartArea: false,
-            color: 'rgba(0, 0, 0, 0.05)'
-          },
-          min: 0,
-          max: 4,
-          ticks: {
-            stepSize: 1,
-            font: { size: 11, family: 'Arial, sans-serif' },
-            color: '#555'
-          },
-          type: 'linear'
-        },
-        yAsthma: {
-          position: 'left',
-          offset: true,
-          title: {
-            display: showAsthmaticRisk,
-            text: 'Asthmatic Risk (1-4)',
-            font: { size: 14, weight: 'bold' },
-            color: '#333'
-          },
-          grid: {
-            drawOnChartArea: false,
-            color: 'rgba(0, 0, 0, 0.05)'
-          },
-          min: 1,
-          max: 5,
-          ticks: {
-            stepSize: 1,
-            font: { size: 11, family: 'Arial, sans-serif' },
-            color: '#555'
-          },
-          type: 'linear',
-          display: showAsthmaticRisk
-        }
-      },
-      plugins: {
-        legend: {
-          display: true,
-          position: 'top',
-          align: 'center',
-          maxHeight: 30,
-          labels: {
-            font: { size: 12, family: 'Arial, sans-serif' },
-            color: '#333',
-            padding: 15,
-            boxWidth: 20,
-            usePointStyle: true
-          }
-        },
-        tooltip: {
-          mode: 'index',
-          intersect: false,
-          position: 'nearest',
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          titleColor: '#333',
-          bodyColor: '#333',
-          titleFont: { size: 13, weight: 'bold' },
-          bodyFont: { size: 12 },
-          padding: 10,
-          boxPadding: 5,
-          borderColor: 'rgba(0, 0, 0, 0.2)',
-          borderWidth: 1,
-          callbacks: {
-            label: ctx => {
-              if (ctx.dataset.label.includes('Temp')) return `Temp: ${ctx.parsed.y} °C`;
-              if (ctx.dataset.label.includes('Rainfall')) return `Rainfall: ${ctx.parsed.y} mm`;
-              if (ctx.dataset.label.includes('Asthmatic Risk')) return `Asthmatic Risk: ${ctx.parsed.y}`;
-              if (ctx.dataset.label.match(/.*/)) return `${ctx.dataset.label}: ${ctx.parsed.y}`;
-              return `${ctx.dataset.label}: ${ctx.parsed.y}`;
+
+        const now = new Date(), annotations = {};
+        let nowX = null, nowTemp = null;
+        if (combinedData.length === 1 && Math.abs(combinedData[0].ts.getTime() - now.getTime()) <= 30 * 60 * 1000) {
+          nowX = 0; nowTemp = combinedData[0].temp;
+        } else if (combinedData.length > 1) {
+          for (let i = 0; i < combinedData.length - 1; i++) {
+            const t0 = combinedData[i].ts.getTime(), t1 = combinedData[i + 1].ts.getTime();
+            if (now.getTime() >= t0 && now.getTime() <= t1) {
+              nowX = i + (now.getTime() - t0) / (t1 - t0);
+              nowTemp = utils.interpolateTemp(combinedData[i].ts, combinedData[i].temp, combinedData[i + 1].ts, combinedData[i + 1].temp, now);
+              break;
             }
           }
-        },
-        annotation: {
-          annotations: annotations
-        },
-        datalabels: {
-          display: false
+          if (nowX === null) {
+            nowX = now.getTime() < combinedData[0].ts.getTime() ? 0 : combinedData.length - 1;
+            nowTemp = combinedData[nowX].temp;
+          }
+        }
+
+        combinedData.forEach(({ ts }, i) => {
+          if (ts.getHours() === 0 && ts.getMinutes() === 0 && i > 0) {
+            annotations['midnightLine' + i] = {
+              type: 'line', xMin: i, xMax: i, borderColor: 'rgba(100, 100, 100, 0.3)',
+              borderWidth: 1.5, borderDash: [5, 5], label: {
+                content: ts.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }),
+                enabled: true, position: 'top', backgroundColor: 'rgba(50, 50, 50, 0.7)', color: '#fff',
+                font: { size: 10, weight: 'bold' }, yAdjust: 0, padding: 4
+              }
+            };
+          }
+        });
+
+        if (nowX !== null && nowTemp !== null) {
+          annotations['nowLine'] = {
+            type: 'line', xMin: nowX, xMax: nowX, borderColor: 'rgba(220, 53, 69, 0.8)', borderWidth: 2,
+            borderDash: [6, 4], label: {
+              content: `Now: ${nowTemp.toFixed(1)} °C`, enabled: true, position: 'top',
+              backgroundColor: 'rgba(220, 53, 69, 0.9)', color: 'white', font: { weight: 'bold', size: 11 },
+              yAdjust: 0, xAdjust: 0, padding: 6
+            }
+          };
+        }
+
+        tempChart = new Chart(elements.ctx, {
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            animation: { duration: 1000, easing: 'easeInOutQuad' },
+            maintainAspectRatio: false,
+            layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
+            scales: {
+              x: { title: { display: true, text: `Time (Hours over ${daysDiff} Day${daysDiff > 1 ? 's' : ''})`, font: { size: 14, weight: 'bold' }, color: '#333' }, ticks: { maxRotation: 45, minRotation: 30, autoSkip: true, maxTicksLimit: 24 * daysDiff, font: { size: 11 }, color: '#555' }, grid: { drawOnChartArea: false, color: 'rgba(0, 0, 0, 0.1)' }, type: 'category' },
+              yTemp: { position: 'left', title: { display: true, text: 'Temperature (°C)', font: { size: 14, weight: 'bold' }, color: '#333' }, suggestedMin: 0, suggestedMax: 40, grid: { drawOnChartArea: true, color: 'rgba(0, 0, 0, 0.05)', lineWidth: 1 }, ticks: { stepSize: 5, font: { size: 11 }, color: '#555' } },
+              yRain: { position: 'right', title: { display: true, text: 'Rainfall (mm)', font: { size: 14, weight: 'bold' }, color: '#333' }, grid: { drawOnChartArea: false, color: 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 15, ticks: { stepSize: 3, font: { size: 11 }, color: '#555' } },
+              yPollen: { position: 'right', offset: true, title: { display: true, text: 'Pollen Contamination (0-4)', font: { size: 14, weight: 'bold' }, color: '#333' }, grid: { drawOnChartArea: false, color: 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 4, ticks: { stepSize: 1, font: { size: 11 }, color: '#555' }, type: 'linear' },
+              yAsthma: { position: 'left', offset: true, title: { display: showAsthmaticRisk, text: 'Asthmatic Risk (1-4)', font: { size: 14, weight: 'bold' }, color: '#333' }, grid: { drawOnChartArea: false, color: 'rgba(0, 0, 0, 0.05)' }, min: 1, max: 5, ticks: { stepSize: 1, font: { size: 11 }, color: '#555' }, type: 'linear', display: showAsthmaticRisk }
+            },
+            plugins: {
+              legend: { display: true, position: 'top', align: 'center', maxHeight: 30, labels: { font: { size: 12 }, color: '#333', padding: 15, boxWidth: 20, usePointStyle: true } },
+              tooltip: { mode: 'index', intersect: false, position: 'nearest', backgroundColor: 'rgba(255, 255, 255, 0.95)', titleColor: '#333', bodyColor: '#333', titleFont: { size: 13, weight: 'bold' }, bodyFont: { size: 12 }, padding: 10, boxPadding: 5, borderColor: 'rgba(0, 0, 0, 0.2)', borderWidth: 1, callbacks: { label: ctx => `${ctx.dataset.label.split(' - ')[0]}: ${ctx.parsed.y}${ctx.dataset.label.includes('Temp') ? ' °C' : ctx.dataset.label.includes('Rainfall') ? ' mm' : ''}` } },
+              annotation: { annotations },
+              datalabels: { display: false }
+            },
+            interaction: { mode: 'nearest', intersect: false, hover: { mode: 'index' } }
+          }
+        });
+      }
+    };
+
+    // Core Logic
+    const core = {
+      loadStations: async () => {
+        elements.errorMsg.textContent = '';
+        const savedCorsProxy = localStorage.getItem(STORAGE_KEYS.CORSPROXY);
+        elements.corsproxyInput.value = savedCorsProxy?.trim() || 'https://cors-anywhere-agfr.onrender.com/';
+        try {
+          await dataFetch.loadForecastPoints();
+          const metaData = await utils.fetchWithProxy('https://www.geosphere.at/data/stations/tawes/points');
+          const coordData = await utils.fetchWithProxy('https://www.geosphere.at/data/stations/tawes/current_data');
+          if (!metaData.mapping || !coordData.features) throw new Error('Invalid station data format');
+          const coordsMap = Object.fromEntries(coordData.features.map(f => [String(f.properties.station), { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] }]));
+          stations = Object.fromEntries(Object.entries(metaData.mapping).map(([id, info]) => [id, {
+            name: info.name, klima_id: info.klima_id, elevation: info.elevation,
+            lat: coordsMap[id]?.lat ?? null, lon: coordsMap[id]?.lon ?? null, point_id: info.klima_id || id
+          }]));
+          elements.stationSelect.innerHTML = '';
+          Object.entries(stations)
+            .filter(([, s]) => s.lat !== null && s.lon !== null)
+            .sort((a, b) => a[1].name.localeCompare(b[1].name))
+            .forEach(([id, info]) => {
+              const option = document.createElement('option');
+              option.value = id;
+              option.textContent = utils.capitalizeWords(info.name);
+              elements.stationSelect.appendChild(option);
+            });
+          core.restoreSavedSettings();
+        } catch (error) {
+          elements.lastUpdated.textContent = '';
+          elements.errorMsg.textContent = `Error loading stations: ${error.message}`;
         }
       },
-      interaction: {
-        mode: 'nearest',
-        intersect: false,
-        hover: {
-          mode: 'index'
+      restoreSavedSettings: () => {
+        const saved = {
+          stationId: localStorage.getItem(STORAGE_KEYS.STATION),
+          timeRange: localStorage.getItem(STORAGE_KEYS.TIMERANGE),
+          futureDays: localStorage.getItem(STORAGE_KEYS.FUTUREDAYS),
+          pollens: localStorage.getItem(STORAGE_KEYS.POLLENS),
+          asthmaToggle: localStorage.getItem(STORAGE_KEYS.ASTHMA_TOGGLE)
+        };
+        if (saved.timeRange && elements.timerangeSelect.querySelector(`option[value="${saved.timeRange}"]`)) elements.timerangeSelect.value = saved.timeRange;
+        if (saved.futureDays && elements.futuredaysSelect.querySelector(`option[value="${saved.futureDays}"]`)) elements.futuredaysSelect.value = saved.futureDays;
+        if (saved.pollens) try { selectedPollens = new Set(JSON.parse(saved.pollens)); } catch {}
+        showAsthmaticRisk = saved.asthmaToggle === 'true';
+        elements.asthmaToggle.checked = showAsthmaticRisk;
+        if (saved.stationId && stations[saved.stationId]) {
+          elements.stationSelect.value = saved.stationId;
+          core.startRefresh();
+        } else if (elements.stationSelect.options.length) {
+          elements.stationSelect.selectedIndex = 0;
+          core.startRefresh();
         }
+      },
+      fetchAndUpdateData: async () => {
+        try {
+          elements.errorMsg.textContent = '';
+          elements.lastUpdated.textContent = 'Loading data...';
+          const stationId = elements.stationSelect.value;
+          const hoursRange = parseInt(elements.timerangeSelect.value);
+          const futureHours = parseInt(elements.futuredaysSelect.value);
+          const data = await dataFetch.fetchStationData(stationId, hoursRange);
+          const timestamps = data.timestamps.map(ts => new Date(ts));
+          const { TL, RR } = data.features[0].properties.parameters;
+          const { lat, lon } = stations[stationId] || {};
+          const forecast = await dataFetch.fetchFlexiForecast(lat, lon);
+          pollenData = await dataFetch.fetchPollenData(lat, lon);
+          contaminationDates = [pollenData.contamination_date_1 || 'Today', pollenData.contamination_date_2 || '', pollenData.contamination_date_3 || '', pollenData.contamination_date_4 || ''];
+          asthmaticRiskData = pollenData.additionalForecastData?.slice(0, 4).map(d => 3 - d.asthma_weather) || [];
+          if (pollenData.contamination?.length) ui.buildPollenCheckboxes(pollenData.contamination);
+          const pastData = timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && TL?.data[i] !== null ? acc.concat({ ts, temp: TL.data[i], rr: RR?.data[i] ?? 0 }) : acc, []);
+          const now = new Date(), maxFutureDate = new Date(now.getTime() + futureHours * 3600 * 1000);
+          const forecastData = forecast ? forecast.timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate && forecast.t2m[i] !== null ? acc.concat({ ts, temp: forecast.t2m[i], rr: forecast.rr[i] ?? 0 }) : acc, []) : [];
+          combinedData = [...pastData, ...forecastData];
+          ui.drawChart();
+          ui.updateCurrentTemp(pastData);
+          elements.lastUpdated.textContent = `Last updated: ${new Date().toLocaleString()}`;
+        } catch (error) {
+          elements.lastUpdated.textContent = elements.currentTemp.textContent = '';
+          elements.errorMsg.textContent = `Error loading data: ${error.message}`;
+        }
+      },
+      startRefresh: () => {
+        if (refreshIntervalId) clearInterval(refreshIntervalId);
+        core.fetchAndUpdateData();
+        refreshIntervalId = setInterval(core.fetchAndUpdateData, 300000);
+      },
+      findNearestStation: position => {
+        const { latitude: userLat, longitude: userLon } = position.coords;
+        let minDist = Infinity, nearestStationId = null;
+        for (const [id, info] of Object.entries(stations)) {
+          if (info.lat === null || info.lon === null) continue;
+          const dist = utils.haversineDistance(userLat, userLon, info.lat, info.lon);
+          if (dist < minDist) { minDist = dist; nearestStationId = id; }
+        }
+        return nearestStationId;
       }
-    }
-  });
-}
+    };
+// Event Listeners
+    const setupListeners = () => {
+      const refreshOnChange = () => {
+        const stationId = elements.stationSelect.value;
+        if (stationId) {
+          localStorage.setItem(STORAGE_KEYS.STATION, stationId);
+          localStorage.setItem(STORAGE_KEYS.TIMERANGE, elements.timerangeSelect.value);
+          localStorage.setItem(STORAGE_KEYS.FUTUREDAYS, elements.futuredaysSelect.value);
+          core.startRefresh();
+        }
+      };
+      elements.stationSelect.addEventListener('change', refreshOnChange);
+      elements.timerangeSelect.addEventListener('change', refreshOnChange);
+      elements.futuredaysSelect.addEventListener('change', refreshOnChange);
+      elements.corsproxyInput.addEventListener('input', () => {
+        localStorage.setItem(STORAGE_KEYS.CORSPROXY, elements.corsproxyInput.value.trim());
+        refreshOnChange();
+      });
+      elements.asthmaToggle.addEventListener('change', () => {
+        showAsthmaticRisk = elements.asthmaToggle.checked;
+        localStorage.setItem(STORAGE_KEYS.ASTHMA_TOGGLE, showAsthmaticRisk.toString());
+        ui.drawChart();
+      });
+      elements.locationBtn.addEventListener('click', () => {
+        if (!navigator.geolocation) {
+          elements.errorMsg.textContent = 'Geolocation is not supported by your browser.';
+          return;
+        }
+        elements.locationBtn.disabled = true;
+        elements.locationBtn.textContent = 'Locating...';
+        navigator.geolocation.getCurrentPosition(position => {
+          const nearestStationId = core.findNearestStation(position);
+          if (nearestStationId) {
+            elements.stationSelect.value = nearestStationId;
+            localStorage.setItem(STORAGE_KEYS.STATION, nearestStationId);
+            core.startRefresh();
+            elements.errorMsg.textContent = `Nearest station selected: ${stations[nearestStationId].name}`;
+          } else {
+            elements.errorMsg.textContent = 'Could not find a nearby station.';
+          }
+          elements.locationBtn.disabled = false;
+          elements.locationBtn.textContent = 'Use My Location';
+        }, err => {
+          elements.errorMsg.textContent = `Geolocation error: ${err.message}`;
+          elements.locationBtn.disabled = false;
+          elements.locationBtn.textContent = 'Use My Location';
+        }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+      });
+    };
 
+    // Initialize
+    const init = async () => {
+      await core.loadStations();
+      setupListeners();
+    };
 
-function randomColorForId(id) {
-  const colors = [
-    'rgba(255, 99, 132, 0.7)',
-    'rgba(54, 162, 235, 0.7)',
-    'rgba(255, 206, 86, 0.7)',
-    'rgba(75, 192, 192, 0.7)',
-    'rgba(153, 102, 255, 0.7)',
-    'rgba(255, 159, 64, 0.7)',
-    'rgba(199, 199, 199, 0.7)',
-    'rgba(83, 102, 255, 0.7)',
-    'rgba(255, 99, 255, 0.7)',
-    'rgba(99, 255, 132, 0.7)'
-  ];
-  const idx = Number(id) % colors.length;
-  return colors[idx];
-}
-
-function startRefresh(stationId, hoursRange, futureHours) {
-  if (refreshIntervalId) clearInterval(refreshIntervalId);
-  fetchAndUpdateData(stationId, hoursRange, futureHours);
-  refreshIntervalId = setInterval(() => fetchAndUpdateData(stationId, hoursRange, futureHours), 300000);
-}
-
-stationSelect.addEventListener('change', () => {
-  const selectedStation = stationSelect.value;
-  const selectedRange = parseInt(timerangeSelect.value);
-  const selectedFutureHours = parseInt(futuredaysSelect.value);
-  if (selectedStation) {
-    localStorage.setItem(STORAGE_KEY_STATION, selectedStation);
-    startRefresh(selectedStation, selectedRange, selectedFutureHours);
-  }
-});
-
-timerangeSelect.addEventListener('change', () => {
-  const selectedStation = stationSelect.value;
-  const selectedRange = parseInt(timerangeSelect.value);
-  const selectedFutureHours = parseInt(futuredaysSelect.value);
-  if (selectedStation) {
-    localStorage.setItem(STORAGE_KEY_TIMERANGE, selectedRange);
-    startRefresh(selectedStation, selectedRange, selectedFutureHours);
-  }
-});
-
-futuredaysSelect.addEventListener('change', () => {
-  const selectedStation = stationSelect.value;
-  const selectedRange = parseInt(timerangeSelect.value);
-  const selectedFutureHours = parseInt(futuredaysSelect.value);
-  if (selectedStation) {
-    localStorage.setItem(STORAGE_KEY_FUTUREDAYS, selectedFutureHours);
-    startRefresh(selectedStation, selectedRange, selectedFutureHours);
-  }
-});
-
-corsproxyInput.addEventListener('input', () => {
-  const selectedProxy = corsproxyInput.value.trim();
-  localStorage.setItem(STORAGE_KEY_CORSPROXY, selectedProxy);
-  const selectedStation = stationSelect.value;
-  const selectedRange = parseInt(timerangeSelect.value);
-  const selectedFutureHours = parseInt(futuredaysSelect.value);
-  if (selectedStation) {
-    startRefresh(selectedStation, selectedRange, selectedFutureHours);
-  }
-});
-
-asthmaToggle.addEventListener('change', () => {
-  showAsthmaticRisk = asthmaToggle.checked;
-  localStorage.setItem(STORAGE_KEY_ASTHMA_TOGGLE, showAsthmaticRisk.toString());
-  drawChartWithAllData({
-    combinedData: combinedData,
-    pollenContaminationResult: pollenData,
-    contaminationDates: contaminationDates,
-    asthmaticRiskData: asthmaticRiskData,
-    selectedPollens: selectedPollens,
-    stationName: stations[stationSelect.value]?.name || 'Unknown Station'
-  });
-});
-
-locationBtn.addEventListener('click', () => {
-  errorMsg.textContent = '';
-  if (!navigator.geolocation) {
-    errorMsg.textContent = 'Geolocation is not supported by your browser.';
-    return;
-  }
-  locationBtn.disabled = true;
-  locationBtn.textContent = 'Locating...';
-  navigator.geolocation.getCurrentPosition(position => {
-    const userLat = position.coords.latitude;
-    const userLon = position.coords.longitude;
-    let minDist = Infinity;
-    let nearestStationId = null;
-    for (const [stationId, info] of Object.entries(stations)) {
-      if (info.lat === null || info.lon === null) continue;
-      const dist = haversineDistance(userLat, userLon, info.lat, info.lon);
-      if (dist < minDist) {
-        minDist = dist;
-        nearestStationId = stationId;
-      }
-    }
-    if (nearestStationId) {
-      stationSelect.value = nearestStationId;
-      localStorage.setItem(STORAGE_KEY_STATION, nearestStationId);
-      const selectedRange = parseInt(timerangeSelect.value);
-      const selectedFutureHours = parseInt(futuredaysSelect.value);
-      startRefresh(nearestStationId, selectedRange, selectedFutureHours);
-      errorMsg.textContent = `Nearest station selected: ${stations[nearestStationId].name}`;
-    } else {
-      errorMsg.textContent = 'Could not find a nearby station.';
-    }
-    locationBtn.disabled = false;
-    locationBtn.textContent = 'Use My Location';
-  }, err => {
-    errorMsg.textContent = `Geolocation error: ${err.message}`;
-    locationBtn.disabled = false;
-    locationBtn.textContent = 'Use My Location';
-  }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
-});
-
-loadStations();
+    init();
   </script>
 </body>
 </html>
