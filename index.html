@@ -344,8 +344,8 @@ async function loadStations() {
       showAsthmaticRisk = savedAsthmaToggle === 'true';
       asthmaToggle.checked = showAsthmaticRisk;
     } else {
-      asthmaToggle.checked = true; // Default to checked
-      showAsthmaticRisk = true;
+      asthmaToggle.checked = false; // Default to checked
+      showAsthmaticRisk = false;
     }
     if (savedStationId && stations[savedStationId]) {
       stationSelect.value = savedStationId;
