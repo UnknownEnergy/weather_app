@@ -13,11 +13,20 @@
       color: #333;
       width: 100vw;
       box-sizing: border-box;
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+    body.dark-mode {
+      background: #1a1a1a;
+      color: #e0e0e0;
     }
     h1 {
       text-align: center;
       margin-bottom: 1rem;
       font-size: 1.5rem;
+      transition: color 0.3s ease;
+    }
+    body.dark-mode h1 {
+      color: #fff;
     }
     .controls {
       display: flex;
@@ -35,6 +44,10 @@
     label {
       font-weight: bold;
       flex-shrink: 0;
+      transition: color 0.3s ease;
+    }
+    body.dark-mode label {
+      color: #ddd;
     }
     select, input[type="text"] {
       padding: 0.4rem 0.6rem;
@@ -43,6 +56,14 @@
       border-radius: 4px;
       border: 1px solid #ccc;
       flex-shrink: 0;
+      background: white;
+      color: #333;
+      transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+    }
+    body.dark-mode select, body.dark-mode input[type="text"] {
+      background: #2d2d2d;
+      color: #e0e0e0;
+      border-color: #555;
     }
     #location-btn {
       padding: 0.5rem 1rem;
@@ -56,21 +77,22 @@
       flex-shrink: 0;
       align-self: center;
     }
-    #location-btn:hover:not(:disabled) { background-color: #0056b3; }
-    #location-btn:disabled { background-color: #999; cursor: default; }
-    #last-updated {
-      margin-top: 0.5rem;
-      font-style: italic;
-      color: #555;
-      text-align: center;
-      font-size: 0.9rem;
+    body.dark-mode #location-btn {
+      background-color: #4da6ff;
     }
-    #info {
+    #location-btn:hover:not(:disabled) { background-color: #0056b3; }
+    body.dark-mode #location-btn:hover:not(:disabled) { background-color: #3d86cc; }
+    #location-btn:disabled { background-color: #999; cursor: default; }
+    #last-updated, #info {
       margin-top: 0.5rem;
       font-style: italic;
       color: #555;
       text-align: center;
       font-size: 0.9rem;
+      transition: color 0.3s ease;
+    }
+    body.dark-mode #last-updated, body.dark-mode #info {
+      color: #aaa;
     }
     #error-msg {
       color: #cc0000;
@@ -79,12 +101,20 @@
       text-align: center;
       min-height: 1.2em;
       font-size: 0.95rem;
+      transition: color 0.3s ease;
+    }
+    body.dark-mode #error-msg {
+      color: #ff5555;
     }
     #current-temp {
       text-align: center;
       font-weight: bold;
       margin-top: 0.5rem;
       font-size: 1.1rem;
+      transition: color 0.3s ease;
+    }
+    body.dark-mode #current-temp {
+      color: #ddd;
     }
     #pollen-select {
       max-height: 150px;
@@ -95,6 +125,11 @@
       padding: 0.5rem;
       font-size: 0.9rem;
       min-width: 200px;
+      transition: background 0.3s ease, border-color 0.3s ease;
+    }
+    body.dark-mode #pollen-select {
+      background: #2d2d2d;
+      border-color: #555;
     }
     #pollen-select label {
       display: flex;
@@ -102,6 +137,10 @@
       gap: 0.5rem;
       margin-bottom: 0.25rem;
       cursor: pointer;
+      transition: color 0.3s ease;
+    }
+    body.dark-mode #pollen-select label {
+      color: #e0e0e0;
     }
     canvas {
       background: white;
@@ -114,6 +153,12 @@
       margin: 0 auto;
       display: block;
       object-fit: contain;
+      transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    body.dark-mode canvas {
+      background: #2d2d2d;
+      border-color: #555;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
     }
     @media (max-width: 480px) {
       .controls { gap: 0.75rem; justify-content: center; }
@@ -124,6 +169,27 @@
       #error-msg { font-size: 0.9rem; }
       #current-temp { font-size: 1rem; }
       #pollen-select { min-width: 150px; max-height: 120px; }
+    }
+    #dark-mode-toggle {
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      background-color: #666;
+      border: none;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+      flex-shrink: 0;
+      align-self: center;
+    }
+    body.dark-mode #dark-mode-toggle {
+      background-color: #888;
+    }
+    #dark-mode-toggle:hover {
+      background-color: #555;
+    }
+    body.dark-mode #dark-mode-toggle:hover {
+      background-color: #999;
     }
   </style>
 </head>
@@ -169,6 +235,7 @@
       <input type="text" id="corsproxy-input" aria-label="Enter CORS proxy URL" placeholder="Enter CORS proxy URL">
     </div>
     <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
+    <button id="dark-mode-toggle" title="Toggle dark mode">Dark Mode</button>
   </div>
   <canvas id="tempChart" width="900" height="400" aria-label="Temperature, Rainfall, Pollen Contamination and Asthmatic Risk chart"></canvas>
   <div id="current-temp" aria-live="polite" aria-atomic="true"></div>
@@ -193,13 +260,15 @@
       futuredaysSelect: document.getElementById('futuredays-select'),
       corsproxyInput: document.getElementById('corsproxy-input'),
       pollenSelect: document.getElementById('pollen-select'),
-      asthmaToggle: document.getElementById('asthma-toggle')
+      asthmaToggle: document.getElementById('asthma-toggle'),
+      darkModeToggle: document.getElementById('dark-mode-toggle')
     };
 
     // State Variables
     let stations = {}, forecastPoints = [], tempChart, refreshIntervalId;
     let pollenData = null, selectedPollens = new Set(), contaminationDates = [];
     let asthmaticRiskData = [], showAsthmaticRisk = false, combinedData = [];
+    let isDarkMode = false;
 
     // Storage Keys
     const STORAGE_KEYS = {
@@ -208,7 +277,8 @@
       FUTUREDAYS: 'selectedFutureDays',
       CORSPROXY: 'selectedCorsProxy',
       POLLENS: 'selectedPollens',
-      ASTHMA_TOGGLE: 'showAsthmaticRisk'
+      ASTHMA_TOGGLE: 'showAsthmaticRisk',
+      DARK_MODE: 'darkMode'
     };
 
     // Utility Functions
@@ -245,6 +315,33 @@
           'rgba(99, 255, 132, OPACITY)'
         ];
         return colors[Number(id) % colors.length].replace('OPACITY', opacity);
+      }
+    };
+
+    // Dark Mode Functions
+    const darkMode = {
+      init: () => {
+        // Check for saved preference
+        const savedDarkMode = localStorage.getItem(STORAGE_KEYS.DARK_MODE);
+        if (savedDarkMode !== null) {
+          isDarkMode = savedDarkMode === 'true';
+        } else {
+          // Check browser/system preference
+          isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+        darkMode.applyTheme();
+      },
+      toggle: () => {
+        isDarkMode = !isDarkMode;
+        localStorage.setItem(STORAGE_KEYS.DARK_MODE, isDarkMode.toString());
+        darkMode.applyTheme();
+        if (tempChart) {
+          ui.drawChart(); // Redraw chart to update colors
+        }
+      },
+      applyTheme: () => {
+        document.body.classList.toggle('dark-mode', isDarkMode);
+        elements.darkModeToggle.textContent = isDarkMode ? 'Light Mode' : 'Dark Mode';
       }
     };
 
@@ -338,8 +435,8 @@
         const contaminationDatasets = pollenData?.contamination?.filter(p => selectedPollens.has(String(p.poll_id))).map(p => ({
             label: p.poll_title,
             data: mapDailyToHourly([p.contamination_1 ?? 0, p.contamination_2 ?? 0, p.contamination_3 ?? 0, p.contamination_4 ?? 0], 4),
-            backgroundColor: utils.randomColorForId(p.poll_id, 0.2),
-            borderColor: utils.randomColorForId(p.poll_id, 0.9),
+            backgroundColor: utils.randomColorForId(p.poll_id, isDarkMode ? 0.3 : 0.2),
+            borderColor: utils.randomColorForId(p.poll_id, isDarkMode ? 0.7 : 0.9),
             type: 'line',
             fill: true,
             tension: 0.4,
@@ -435,10 +532,10 @@
         combinedData.forEach(({ ts }, i) => {
           if (ts.getHours() === 0 && ts.getMinutes() === 0 && i > 0) {
             annotations['midnightLine' + i] = {
-              type: 'line', xMin: i, xMax: i, borderColor: 'rgba(100, 100, 100, 0.3)',
+              type: 'line', xMin: i, xMax: i, borderColor: isDarkMode ? 'rgba(150, 150, 150, 0.3)' : 'rgba(100, 100, 100, 0.3)',
               borderWidth: 1.5, borderDash: [5, 5], label: {
                 content: ts.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }),
-                enabled: true, position: 'top', backgroundColor: 'rgba(50, 50, 50, 0.7)', color: '#fff',
+                enabled: true, position: 'top', backgroundColor: isDarkMode ? 'rgba(80, 80, 80, 0.7)' : 'rgba(50, 50, 50, 0.7)', color: '#fff',
                 font: { size: 10, weight: 'bold' }, yAdjust: 0, padding: 4
               }
             };
@@ -465,15 +562,15 @@
             maintainAspectRatio: false,
             layout: { padding: { left: 10, right: 10, top: 10, bottom: 10 } },
             scales: {
-              x: { title: { display: true, text: `Time (Hours over ${daysDiff} Day${daysDiff > 1 ? 's' : ''})`, font: { size: 14, weight: 'bold' }, color: '#333' }, ticks: { maxRotation: 45, minRotation: 30, autoSkip: true, maxTicksLimit: 24 * daysDiff, font: { size: 11 }, color: '#555' }, grid: { drawOnChartArea: false, color: 'rgba(0, 0, 0, 0.1)' }, type: 'category' },
-              yTemp: { position: 'left', title: { display: true, text: 'Temperature (°C)', font: { size: 14, weight: 'bold' }, color: '#333' }, suggestedMin: 0, suggestedMax: 40, grid: { drawOnChartArea: true, color: 'rgba(0, 0, 0, 0.05)', lineWidth: 1 }, ticks: { stepSize: 5, font: { size: 11 }, color: '#555' } },
-              yRain: { position: 'right', title: { display: true, text: 'Rainfall (mm)', font: { size: 14, weight: 'bold' }, color: '#333' }, grid: { drawOnChartArea: false, color: 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 15, ticks: { stepSize: 3, font: { size: 11 }, color: '#555' } },
-              yPollen: { position: 'right', offset: true, title: { display: true, text: 'Pollen Contamination (0-4)', font: { size: 14, weight: 'bold' }, color: '#333' }, grid: { drawOnChartArea: false, color: 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 4, ticks: { stepSize: 1, font: { size: 11 }, color: '#555' }, type: 'linear' },
-              yAsthma: { position: 'left', offset: true, title: { display: showAsthmaticRisk, text: 'Asthmatic Risk (1-5)', font: { size: 14, weight: 'bold' }, color: '#333' }, grid: { drawOnChartArea: false, color: 'rgba(0, 0, 0, 0.05)' }, min: 1, max: 5, ticks: { stepSize: 1, font: { size: 11 }, color: '#555' }, type: 'linear', display: showAsthmaticRisk }
+              x: { title: { display: true, text: `Time (Hours over ${daysDiff} Day${daysDiff > 1 ? 's' : ''})`, font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, ticks: { maxRotation: 45, minRotation: 30, autoSkip: true, maxTicksLimit: 24 * daysDiff, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }, type: 'category' },
+              yTemp: { position: 'left', title: { display: true, text: 'Temperature (°C)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, suggestedMin: 0, suggestedMax: 40, grid: { drawOnChartArea: true, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)', lineWidth: 1 }, ticks: { stepSize: 5, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' } },
+              yRain: { position: 'right', title: { display: true, text: 'Rainfall (mm)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 15, ticks: { stepSize: 3, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' } },
+              yPollen: { position: 'right', offset: true, title: { display: true, text: 'Pollen Contamination (0-4)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 4, ticks: { stepSize: 1, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' }, type: 'linear' },
+              yAsthma: { position: 'left', offset: true, title: { display: showAsthmaticRisk, text: 'Asthmatic Risk (1-5)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: 1, max: 5, ticks: { stepSize: 1, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' }, type: 'linear', display: showAsthmaticRisk }
             },
             plugins: {
-              legend: { display: true, position: 'top', align: 'center', maxHeight: 30, labels: { font: { size: 12 }, color: '#333', padding: 15, boxWidth: 20, usePointStyle: true } },
-              tooltip: { mode: 'index', intersect: false, position: 'nearest', backgroundColor: 'rgba(255, 255, 255, 0.95)', titleColor: '#333', bodyColor: '#333', titleFont: { size: 13, weight: 'bold' }, bodyFont: { size: 12 }, padding: 10, boxPadding: 5, borderColor: 'rgba(0, 0, 0, 0.2)', borderWidth: 1, callbacks: { label: ctx => `${ctx.dataset.label.split(' - ')[0]}: ${ctx.parsed.y}${ctx.dataset.label.includes('Temp') ? ' °C' : ctx.dataset.label.includes('Rainfall') ? ' mm' : ''}` } },
+              legend: { display: true, position: 'top', align: 'center', maxHeight: 30, labels: { font: { size: 12 }, color: isDarkMode ? '#eee' : '#333', padding: 15, boxWidth: 20, usePointStyle: true } },
+              tooltip: { mode: 'index', intersect: false, position: 'nearest', backgroundColor: isDarkMode ? 'rgba(50, 50, 50, 0.95)' : 'rgba(255, 255, 255, 0.95)', titleColor: isDarkMode ? '#fff' : '#333', bodyColor: isDarkMode ? '#fff' : '#333', titleFont: { size: 13, weight: 'bold' }, bodyFont: { size: 12 }, padding: 10, boxPadding: 5, borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)', borderWidth: 1, callbacks: { label: ctx => `${ctx.dataset.label.split(' - ')[0]}: ${ctx.parsed.y}${ctx.dataset.label.includes('Temp') ? ' °C' : ctx.dataset.label.includes('Rainfall') ? ' mm' : ''}` } },
               annotation: { annotations },
               datalabels: { display: false }
             },
@@ -538,32 +635,44 @@
       },
       fetchAndUpdateData: async () => {
         try {
-          elements.errorMsg.textContent = '';
-          elements.lastUpdated.textContent = 'Loading data...';
-          const stationId = elements.stationSelect.value;
-          const hoursRange = parseInt(elements.timerangeSelect.value);
-          const futureHours = parseInt(elements.futuredaysSelect.value);
-          const data = await dataFetch.fetchStationData(stationId, hoursRange);
-          const timestamps = data.timestamps.map(ts => new Date(ts));
-          const { TL, RR } = data.features[0].properties.parameters;
-          const { lat, lon } = stations[stationId] || {};
-          const forecast = await dataFetch.fetchFlexiForecast(lat, lon);
-          pollenData = await dataFetch.fetchPollenData(lat, lon);
-          contaminationDates = [pollenData.contamination_date_1 || 'Today', pollenData.contamination_date_2 || '', pollenData.contamination_date_3 || '', pollenData.contamination_date_4 || ''];
-          asthmaticRiskData = pollenData.additionalForecastData?.slice(0, 4).map(d => 3 - d.asthma_weather) || [];
-          if (pollenData.contamination?.length) ui.buildPollenCheckboxes(pollenData.contamination);
-          const pastData = timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && TL?.data[i] !== null ? acc.concat({ ts, temp: TL.data[i], rr: RR?.data[i] ?? 0 }) : acc, []);
-          const now = new Date(), maxFutureDate = new Date(now.getTime() + futureHours * 3600 * 1000);
-          const forecastData = forecast ? forecast.timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate && forecast.t2m[i] !== null ? acc.concat({ ts, temp: forecast.t2m[i], rr: forecast.rr[i] ?? 0 }) : acc, []) : [];
-          combinedData = [...pastData, ...forecastData];
-          ui.drawChart();
-          ui.updateCurrentTemp(pastData);
-          elements.lastUpdated.textContent = `Last updated: ${new Date().toLocaleString()}`;
+            elements.errorMsg.textContent = '';
+            elements.lastUpdated.textContent = 'Loading data...';
+            const stationId = elements.stationSelect.value;
+            const hoursRange = parseInt(elements.timerangeSelect.value);
+            const futureHours = parseInt(elements.futuredaysSelect.value);
+            const data = await dataFetch.fetchStationData(stationId, hoursRange);
+            const timestamps = data.timestamps.map(ts => new Date(ts));
+            const { TL, RR } = data.features[0].properties.parameters;
+            const { lat, lon } = stations[stationId] || {};
+            const forecast = await dataFetch.fetchFlexiForecast(lat, lon);
+
+            // Handle pollen data fetch with error handling to continue even if it fails
+            try {
+            pollenData = await dataFetch.fetchPollenData(lat, lon);
+            contaminationDates = [pollenData.contamination_date_1 || 'Today', pollenData.contamination_date_2 || '', pollenData.contamination_date_3 || '', pollenData.contamination_date_4 || ''];
+            asthmaticRiskData = pollenData.additionalForecastData?.slice(0, 4).map(d => 3 - d.asthma_weather) || [];
+            if (pollenData.contamination?.length) ui.buildPollenCheckboxes(pollenData.contamination);
+            } catch (pollenError) {
+            console.error('Failed to fetch pollen data:', pollenError.message);
+            elements.errorMsg.textContent = `Warning: Pollen data unavailable (${pollenError.message}). Displaying temperature and rainfall data only.`;
+            pollenData = { contamination: [], additionalForecastData: [] }; // Default empty state
+            contaminationDates = [];
+            asthmaticRiskData = [];
+            elements.pollenSelect.innerHTML = '<p style="color: #cc0000; font-style: italic;">Pollen data unavailable</p>';
+            }
+
+            const pastData = timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && TL?.data[i] !== null ? acc.concat({ ts, temp: TL.data[i], rr: RR?.data[i] ?? 0 }) : acc, []);
+            const now = new Date(), maxFutureDate = new Date(now.getTime() + futureHours * 3600 * 1000);
+            const forecastData = forecast ? forecast.timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate && forecast.t2m[i] !== null ? acc.concat({ ts, temp: forecast.t2m[i], rr: forecast.rr[i] ?? 0 }) : acc, []) : [];
+            combinedData = [...pastData, ...forecastData];
+            ui.drawChart();
+            ui.updateCurrentTemp(pastData);
+            elements.lastUpdated.textContent = `Last updated: ${new Date().toLocaleString()}`;
         } catch (error) {
-          elements.lastUpdated.textContent = elements.currentTemp.textContent = '';
-          elements.errorMsg.textContent = `Error loading data: ${error.message}`;
+            elements.lastUpdated.textContent = elements.currentTemp.textContent = '';
+            elements.errorMsg.textContent = `Error loading data: ${error.message}`;
         }
-      },
+        },
       startRefresh: () => {
         if (refreshIntervalId) clearInterval(refreshIntervalId);
         core.fetchAndUpdateData();
@@ -580,7 +689,7 @@
         return nearestStationId;
       }
     };
-// Event Listeners
+    // Event Listeners
     const setupListeners = () => {
       const refreshOnChange = () => {
         const stationId = elements.stationSelect.value;
@@ -628,10 +737,14 @@
           elements.locationBtn.textContent = 'Use My Location';
         }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
       });
+      elements.darkModeToggle.addEventListener('click', () => {
+        darkMode.toggle();
+      });
     };
 
     // Initialize
     const init = async () => {
+      darkMode.init(); // Initialize dark mode before anything else
       await core.loadStations();
       setupListeners();
     };
