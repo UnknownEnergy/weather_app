@@ -149,8 +149,6 @@
       border-radius: 6px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
       width: 100%;
-      height: 700px !important;
-      max-height: 50%;
       margin: 0 auto;
       display: block;
       object-fit: contain;
@@ -191,6 +189,32 @@
     }
     body.dark-mode #dark-mode-toggle:hover {
       background-color: #999;
+    }
+     #chart-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 auto;
+    max-width: 100vw;
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    background: white;
+    border: 1px solid #ddd;
+    }
+    #chart-container canvas {
+        min-width: 900px;
+        height: 400px !important;
+        display: block;
+        object-fit: contain;
+    }
+    body.dark-mode #chart-container {
+        background: #2d2d2d;
+        border-color: #555;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    @media (max-width: 500px) {
+        #chart-container canvas {
+        min-width: 700px;
+        }
     }
   </style>
 </head>
@@ -238,7 +262,9 @@
     <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
     <button id="dark-mode-toggle" title="Toggle dark mode">Dark Mode</button>
   </div>
-  <canvas id="tempChart" width="900" height="400" aria-label="Temperature, Rainfall, Pollen Contamination and Asthmatic Risk chart"></canvas>
+  <div id="chart-container">
+    <canvas id="tempChart" width="900" height="400" aria-label="Temperature, Rainfall, Pollen Contamination and Asthmatic Risk chart"></canvas>
+  </div>
   <div id="current-temp" aria-live="polite" aria-atomic="true"></div>
   <div id="last-updated"></div>
   <div id="info">Data from Geosphere.at and Polleninformation.at</div>
