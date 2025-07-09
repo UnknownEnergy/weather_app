@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Temperature, Rainfall, Pollen & Asthmatic Risk</title>
+  <title>Temperature, Rainfall, Pollen Contamination & Asthmatic Risk</title>
    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☀️</text></svg>">
   <style>
     body {
@@ -373,7 +373,8 @@
         };
       },
       fetchPollenData: async (lat, lon) => {
-        const url = `https://www.polleninformation.at/index.php?eID=appinterface&pure_json=1&lang_code=de&lang_id=0&action=getFullContaminationData&type=gps&value%5Blatitude%5D=${lat}&value%5Blongitude%5D=${lon}&country_id=1&personal_contamination=false&sensitivity=0&country=AT`;
+        const pollIds = [2, 291, 5, 7, 1, 4, 15, 3, 23, 16, 6, 17, 18].join(',');
+        const url = `https://www.polleninformation.at/index.php?id=536&type=15976824&lang_code=de&lang_id=0&L=0&tx_scapp_appapi%5Baction%5D=getFullContaminationData&locationType=gps&value%5Blatitude%5D=${lat}&value%5Blongitude%5D=${lon}&show_polls=${pollIds}&C=1&personal_contamination=false&sensitivity=0&country=AT&sessionid=&pasyfo=0`;
         const data = await utils.fetchWithProxy(url);
         if (!data.success || !data.result) throw new Error('Invalid pollen contamination data');
         return data.result;
@@ -422,6 +423,7 @@
       },
       drawChart: () => {
         if (tempChart) tempChart.destroy();
+        if (!combinedData.length) return;
         const startDate = new Date(combinedData[0].ts), endDate = new Date(combinedData[combinedData.length - 1].ts);
         const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
         const labels = combinedData.map(d => d.ts.toLocaleString([], { hour12: false, hour: '2-digit', minute: '2-digit' }));
@@ -650,7 +652,7 @@
             // Handle pollen data fetch with error handling to continue even if it fails
             try {
             pollenData = await dataFetch.fetchPollenData(lat, lon);
-            contaminationDates = [pollenData.contamination_date_1 || 'Today', pollenData.contamination_date_2 || '', pollenData.contamination_date_3 || '', pollenData.contamination_date_4 || ''];
+            contaminationDates = [pollenData.contamination_date_1 || 'Heute', pollenData.contamination_date_2 || '', pollenData.contamination_date_3 || '', pollenData.contamination_date_4 || ''];
             asthmaticRiskData = pollenData.additionalForecastData?.slice(0, 4).map(d => 3 - d.asthma_weather) || [];
             if (pollenData.contamination?.length) ui.buildPollenCheckboxes(pollenData.contamination);
             } catch (pollenError) {
@@ -662,6 +664,7 @@
             elements.pollenSelect.innerHTML = '<p style="color: #cc0000; font-style: italic;">Pollen data unavailable</p>';
             }
 
+            // Use only hourly data points where minute == 0
             const pastData = timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && TL?.data[i] !== null ? acc.concat({ ts, temp: TL.data[i], rr: RR?.data[i] ?? 0 }) : acc, []);
             const now = new Date(), maxFutureDate = new Date(now.getTime() + futureHours * 3600 * 1000);
             const forecastData = forecast ? forecast.timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate && forecast.t2m[i] !== null ? acc.concat({ ts, temp: forecast.t2m[i], rr: forecast.rr[i] ?? 0 }) : acc, []) : [];
@@ -673,7 +676,7 @@
             elements.lastUpdated.textContent = elements.currentTemp.textContent = '';
             elements.errorMsg.textContent = `Error loading data: ${error.message}`;
         }
-        },
+      },
       startRefresh: () => {
         if (refreshIntervalId) clearInterval(refreshIntervalId);
         core.fetchAndUpdateData();
@@ -690,6 +693,7 @@
         return nearestStationId;
       }
     };
+
     // Event Listeners
     const setupListeners = () => {
       const refreshOnChange = () => {
@@ -745,7 +749,7 @@
 
     // Initialize
     const init = async () => {
-      darkMode.init(); // Initialize dark mode before anything else
+      darkMode.init();
       await core.loadStations();
       setupListeners();
     };
