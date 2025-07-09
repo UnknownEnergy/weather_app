@@ -456,50 +456,125 @@
         const today = new Date(); today.setHours(0, 0, 0, 0);
 
         const mapDailyToHourly = (dailyData, numDays) => combinedData.map(({ ts }) => {
-          const currentDate = new Date(ts); currentDate.setHours(0, 0, 0, 0);
-          const dayIndex = Math.floor((currentDate - today) / (1000 * 60 * 60 * 24));
-          return dayIndex >= 0 && dayIndex < numDays && dailyData[dayIndex] !== undefined ? dailyData[dayIndex] : null;
+            const currentDate = new Date(ts); currentDate.setHours(0, 0, 0, 0);
+            const dayIndex = Math.floor((currentDate - today) / (1000 * 60 * 60 * 24));
+            return dayIndex >= 0 && dayIndex < numDays && dailyData[dayIndex] !== undefined ? dailyData[dayIndex] : null;
         });
 
-        const contaminationDatasets = pollenData?.contamination?.filter(p => selectedPollens.has(String(p.poll_id))).map(p => ({
+        // Helper functions for color based on value
+        const getTempColor = (v) => {
+            if (v === null || v === undefined) return isDarkMode ? 'rgba(255, 99, 132, 0.9)' : 'rgba(255, 99, 132, 0.9)'; // fallback red
+            if (v < 20) return 'blue';
+            if (v >= 20 && v <= 25) return 'green';
+            if (v > 25 && v <= 30) return 'orange';
+            return 'red';
+        };
+
+        const getAsthmaColor = (v) => {
+            switch (v) {
+            case 5: return 'red';
+            case 4: return 'orange';
+            case 3: return 'yellow';
+            case 2: return 'lightgreen';
+            case 1: return 'darkgreen';
+            default: return isDarkMode ? 'rgba(0, 102, 204, 0.9)' : 'rgba(0, 102, 204, 0.9)';
+            }
+        };
+
+        const getPollenColor = (v) => {
+            switch (v) {
+            case 1: return 'green';
+            case 2: return 'yellow';
+            case 3: return 'orange';
+            case 4: return 'red';
+            default: return isDarkMode ? 'rgba(83, 102, 255, 0.9)' : 'rgba(83, 102, 255, 0.9)';
+            }
+        };
+
+        // Temperature dataset with color per point
+        const tempBorderColors = combinedData.map(d => getTempColor(d.temp));
+        const tempPointBgColors = combinedData.map(d => getTempColor(d.temp));
+        const tempBgColors = combinedData.map(d => {
+            const c = getTempColor(d.temp);
+            // Make background fill color with opacity
+            if (c === 'green') return 'rgba(0,128,0,0.15)';
+            if (c === 'blue') return 'rgba(0,0,255,0.15)';
+            if (c === 'orange') return 'rgba(255,165,0,0.15)';
+            if (c === 'red') return 'rgba(255,0,0,0.15)';
+            return 'rgba(255, 99, 132, 0.15)'; // fallback
+        });
+
+        // Pollen contamination datasets with colors per value
+        const contaminationDatasets = pollenData?.contamination?.filter(p => selectedPollens.has(String(p.poll_id))).map(p => {
+            // map daily contamination values to hourly as before
+            const data = mapDailyToHourly([p.contamination_1 ?? 0, p.contamination_2 ?? 0, p.contamination_3 ?? 0, p.contamination_4 ?? 0], 4);
+            // For each data point get color according to pollen value
+            const borderColors = data.map(v => getPollenColor(v));
+            const bgColors = data.map(v => {
+            const c = getPollenColor(v);
+            if (c === 'green') return 'rgba(0,128,0,0.2)';
+            if (c === 'yellow') return 'rgba(255,255,0,0.2)';
+            if (c === 'orange') return 'rgba(255,165,0,0.2)';
+            if (c === 'red') return 'rgba(255,0,0,0.2)';
+            return 'rgba(83, 102, 255, 0.2)';
+            });
+            return {
             label: p.poll_title,
-            data: mapDailyToHourly([p.contamination_1 ?? 0, p.contamination_2 ?? 0, p.contamination_3 ?? 0, p.contamination_4 ?? 0], 4),
-            backgroundColor: utils.randomColorForId(p.poll_id, isDarkMode ? 0.3 : 0.2),
-            borderColor: utils.randomColorForId(p.poll_id, isDarkMode ? 0.7 : 0.9),
+            data,
+            backgroundColor: bgColors,
+            borderColor: borderColors,
             type: 'line',
             fill: true,
             tension: 0.4,
             pointRadius: 3,
             pointHoverRadius: 5,
-            pointBackgroundColor: utils.randomColorForId(p.poll_id, 1),
-            pointBorderColor: utils.randomColorForId(p.poll_id, 1),
+            pointBackgroundColor: borderColors,
+            pointBorderColor: borderColors,
             pointBorderWidth: 1,
             borderWidth: 2,
             yAxisID: 'yPollen',
             spanGaps: true,
-            order: 4
-            })) || [];
+            order: 3
+            };
+        }) || [];
 
+        // Asthmatic Risk dataset with color per value
+        let asthmaData = [];
+        let asthmaBorderColors = [];
+        let asthmaBgColors = [];
+        if (showAsthmaticRisk) {
+            asthmaData = mapDailyToHourly(asthmaticRiskData, asthmaticRiskData.length);
+            asthmaBorderColors = asthmaData.map(v => getAsthmaColor(v));
+            asthmaBgColors = asthmaData.map(v => {
+            const c = getAsthmaColor(v);
+            if (c === 'red') return 'rgba(255,0,0,0.5)';
+            if (c === 'orange') return 'rgba(255,165,0,0.5)';
+            if (c === 'yellow') return 'rgba(255,255,0,0.5)';
+            if (c === 'lightgreen') return 'rgba(144,238,144,0.5)'; // lightgreen
+            if (c === 'darkgreen') return 'rgba(0,100,0,0.5)'; // darkgreen
+            return 'rgba(0,102,204,0.5)';
+            });
+        }
 
         const datasets = [
-          {
+            {
             label: `Mean Temp (°C)`,
             data: combinedData.map(d => d.temp),
-            borderColor: 'rgba(255, 99, 132, 0.9)',
-            backgroundColor: 'rgba(255, 99, 132, 0.15)',
+            borderColor: tempPointBgColors,
+            backgroundColor: tempBgColors,
             fill: true,
             tension: 0.4,
             pointRadius: 3,
             pointHoverRadius: 5,
-            pointBackgroundColor: 'rgba(255, 99, 132, 1)',
-            pointBorderColor: 'rgba(255, 99, 132, 1)',
+            pointBackgroundColor: tempPointBgColors,
+            pointBorderColor: tempBorderColors,
             pointBorderWidth: 1,
             borderWidth: 2.5,
             yAxisID: 'yTemp',
             spanGaps: true,
-            order: 3
-          },
-          {
+            order: 2
+            },
+            {
             label: `Rainfall (mm)`,
             data: combinedData.map(d => d.rr),
             type: 'bar',
@@ -514,29 +589,29 @@
             yAxisID: 'yRain',
             spanGaps: true,
             order: 1
-          },
-          ...contaminationDatasets
+            },
+            ...contaminationDatasets
         ];
 
         if (showAsthmaticRisk) {
-        datasets.push({
+            datasets.push({
             label: 'Asthmatic Risk',
-            data: mapDailyToHourly(asthmaticRiskData, asthmaticRiskData.length),
-            borderColor: 'rgba(0, 102, 204, 0.9)',
-            backgroundColor: 'rgba(0, 102, 204, 0.2)',
+            data: asthmaData,
+            borderColor: asthmaBorderColors,
+            backgroundColor: asthmaBgColors,
             yAxisID: 'yAsthma',
             type: 'line',
             fill: false,
             tension: 0.4,
             pointRadius: 4,
             pointHoverRadius: 6,
-            pointBackgroundColor: 'rgba(0, 102, 204, 1)',
-            pointBorderColor: 'rgba(0, 102, 204, 1)',
+            pointBackgroundColor: asthmaBorderColors,
+            pointBorderColor: asthmaBorderColors,
             pointBorderWidth: 1.5,
             borderWidth: 2.5,
             spanGaps: true,
             order: 2
-        });
+            });
         }
 
         const now = new Date(), annotations = {};
