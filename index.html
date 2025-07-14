@@ -29,11 +29,69 @@
     body.dark-mode h1 {
       color: #fff;
     }
+
+    /* NEW Settings menu container and toggle button */
+    #settings-menu {
+      max-width: 100vw;
+      margin: 0 auto 1rem auto;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    body.dark-mode #settings-menu {
+      background: #2d2d2d;
+      border-color: #555;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    #settings-menu-header {
+      display: flex;
+      justify-content: flex-end;
+      padding: 0.25rem 0.5rem;
+      background: #f0f0f0;
+      border-bottom: 1px solid #ddd;
+      border-radius: 6px 6px 0 0;
+    }
+    body.dark-mode #settings-menu-header {
+      background: #3a3a3a;
+      border-color: #444;
+    }
+    #settings-toggle-btn {
+      font-size: 0.9rem;
+      font-weight: bold;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      background-color: #007bff;
+      color: white;
+      transition: background-color 0.2s ease;
+    }
+    #settings-toggle-btn:hover {
+      background-color: #0056b3;
+    }
+    body.dark-mode #settings-toggle-btn {
+      background-color: #4da6ff;
+    }
+    body.dark-mode #settings-toggle-btn:hover {
+      background-color: #3d86cc;
+    }
+
+    /* The controls container inside settings */
+    #settings-menu-content {
+      padding: 1rem;
+      display: block;
+    }
+    #settings-menu.closed #settings-menu-content {
+      display: none;
+    }
+
     .controls {
       display: flex;
       gap: 1rem;
       justify-content: center;
-      margin-bottom: 1rem;
+      margin-bottom: 0;
       flex-wrap: wrap;
     }
     .control-group {
@@ -84,7 +142,7 @@
     #location-btn:hover:not(:disabled) { background-color: #0056b3; }
     body.dark-mode #location-btn:hover:not(:disabled) { background-color: #3d86cc; }
     #location-btn:disabled { background-color: #999; cursor: default; }
-    #last-updated, #info {
+    #last-updated-weather, #last-updated-pollen, #info {
       margin-top: 0.5rem;
       font-style: italic;
       color: #555;
@@ -92,7 +150,7 @@
       font-size: 0.9rem;
       transition: color 0.3s ease;
     }
-    body.dark-mode #last-updated, body.dark-mode #info {
+    body.dark-mode #last-updated-weather, body.dark-mode #last-updated-pollen, body.dark-mode #info {
       color: #aaa;
     }
     #error-msg {
@@ -164,7 +222,7 @@
       .control-group { gap: 0.25rem; }
       label, select, input[type="text"], #location-btn { font-size: 1rem; min-width: 110px; padding: 0.4rem 0.5rem; }
       h1 { font-size: 1.3rem; margin-bottom: 1rem; }
-      #last-updated { font-size: 0.85rem; }
+      #last-updated-weather, #last-updated-pollen { font-size: 0.85rem; }
       #error-msg { font-size: 0.9rem; }
       #current-temp { font-size: 1rem; }
       #pollen-select { min-width: 150px; max-height: 120px; }
@@ -191,14 +249,14 @@
       background-color: #999;
     }
      #chart-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    margin: 0 auto;
-    max-width: 100vw;
-    border-radius: 6px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    background: white;
-    border: 1px solid #ddd;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 0 auto;
+      max-width: 100vw;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      background: white;
+      border: 1px solid #ddd;
     }
     #chart-container canvas {
         min-width: 900px;
@@ -220,53 +278,68 @@
 </head>
 <body>
   <h1>Temperature, Rainfall, Pollen Contamination & Asthmatic Risk</h1>
-  <div class="controls" role="region" aria-label="Station and time range selection">
-    <div class="control-group">
-      <label for="station-select">Station:</label>
-      <select id="station-select"></select>
+
+  <!-- NEW SETTINGS MENU -->
+  <section id="settings-menu" role="region" aria-label="Settings menu">
+    <header id="settings-menu-header">
+      <button id="settings-toggle-btn" aria-expanded="true" aria-controls="settings-menu-content" aria-label="Toggle settings menu">Hide Settings</button>
+    </header>
+    <div id="settings-menu-content">
+      <div class="controls" role="region" aria-label="Station and time range selection">
+        <div class="control-group">
+          <label for="station-select">Station:</label>
+          <select id="station-select"></select>
+        </div>
+        <div class="control-group">
+          <label for="timerange-select">Past Range:</label>
+          <select id="timerange-select" aria-label="Select time range">
+            <option value="1">Past 1 hour</option>
+            <option value="3">Past 3 hours</option>
+            <option value="12" selected>Past 12 hours</option>
+            <option value="24">Past 24 hours</option>
+            <option value="72">Past 3 days</option>
+            <option value="120">Past 5 days</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label for="futuredays-select">Forecast Range:</label>
+          <select id="futuredays-select" aria-label="Select forecast days ahead">
+            <option value="1">1 hour ahead</option>
+            <option value="3">3 hour ahead</option>
+            <option value="12" selected>12 hours ahead</option>
+            <option value="24">24 hours ahead</option>
+            <option value="72">3 days ahead</option>
+            <option value="120">5 days ahead</option>
+          </select>
+        </div>
+        <div class="control-group" style="flex-direction: column;">
+          <label for="pollen-select" style="font-weight:bold; margin-bottom:0.25rem;">Select Pollens:</label>
+          <div id="pollen-select" role="group" aria-label="Select pollens to display contamination"></div>
+        </div>
+        <div class="control-group">
+          <label for="asthma-toggle">Show Asthmatic Risk:</label>
+          <input type="checkbox" id="asthma-toggle" aria-label="Toggle Asthmatic Risk chart display">
+        </div>
+        <div class="control-group">
+          <label for="apikey-input">Pollen API Key:</label>
+          <input type="text" id="apikey-input" aria-label="Enter Pollen API key" placeholder="Enter Pollen API key" />
+        </div>
+        <div class="control-group">
+          <label for="corsproxy-input">CORS Proxy:</label>
+          <input type="text" id="corsproxy-input" aria-label="Enter CORS proxy URL" placeholder="Enter CORS proxy URL">
+        </div>
+        <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
+        <button id="dark-mode-toggle" title="Toggle dark mode">Dark Mode</button>
+      </div>
     </div>
-    <div class="control-group">
-      <label for="timerange-select">Past Range:</label>
-      <select id="timerange-select" aria-label="Select time range">
-        <option value="1">Past 1 hour</option>
-        <option value="3">Past 3 hours</option>
-        <option value="12" selected>Past 12 hours</option>
-        <option value="24">Past 24 hours</option>
-        <option value="72">Past 3 days</option>
-        <option value="120">Past 5 days</option>
-      </select>
-    </div>
-    <div class="control-group">
-      <label for="futuredays-select">Forecast Range:</label>
-      <select id="futuredays-select" aria-label="Select forecast days ahead">
-        <option value="1">1 hour ahead</option>
-        <option value="3">3 hour ahead</option>
-        <option value="12" selected>12 hours ahead</option>
-        <option value="24">24 hours ahead</option>
-        <option value="72">3 days ahead</option>
-        <option value="120">5 days ahead</option>
-      </select>
-    </div>
-    <div class="control-group" style="flex-direction: column;">
-      <label for="pollen-select" style="font-weight:bold; margin-bottom:0.25rem;">Select Pollens:</label>
-      <div id="pollen-select" role="group" aria-label="Select pollens to display contamination"></div>
-    </div>
-    <div class="control-group">
-      <label for="asthma-toggle">Show Asthmatic Risk:</label>
-      <input type="checkbox" id="asthma-toggle" aria-label="Toggle Asthmatic Risk chart display">
-    </div>
-    <div class="control-group">
-      <label for="corsproxy-input">CORS Proxy:</label>
-      <input type="text" id="corsproxy-input" aria-label="Enter CORS proxy URL" placeholder="Enter CORS proxy URL">
-    </div>
-    <button id="location-btn" title="Find nearest station to your current location">Use My Location</button>
-    <button id="dark-mode-toggle" title="Toggle dark mode">Dark Mode</button>
-  </div>
+  </section>
+
   <div id="chart-container">
     <canvas id="tempChart" width="900" height="400" aria-label="Temperature, Rainfall, Pollen Contamination and Asthmatic Risk chart"></canvas>
   </div>
   <div id="current-temp" aria-live="polite" aria-atomic="true"></div>
-  <div id="last-updated"></div>
+  <div id="last-updated-weather"></div>
+  <div id="last-updated-pollen"></div>
   <div id="info">Data from Geosphere.at and Polleninformation.at</div>
   <div id="error-msg" role="alert" aria-live="assertive"></div>
 
@@ -281,14 +354,21 @@
       locationBtn: document.getElementById('location-btn'),
       errorMsg: document.getElementById('error-msg'),
       ctx: document.getElementById('tempChart').getContext('2d'),
-      lastUpdated: document.getElementById('last-updated'),
+      lastUpdatedWeather: document.getElementById('last-updated-weather'),
+      lastUpdatedPollen: document.getElementById('last-updated-pollen'),
       timerangeSelect: document.getElementById('timerange-select'),
       currentTemp: document.getElementById('current-temp'),
       futuredaysSelect: document.getElementById('futuredays-select'),
       corsproxyInput: document.getElementById('corsproxy-input'),
       pollenSelect: document.getElementById('pollen-select'),
       asthmaToggle: document.getElementById('asthma-toggle'),
-      darkModeToggle: document.getElementById('dark-mode-toggle')
+      darkModeToggle: document.getElementById('dark-mode-toggle'),
+      apikeyInput: document.getElementById('apikey-input'),
+
+      // NEW Settings menu elements
+      settingsMenu: document.getElementById('settings-menu'),
+      settingsToggleBtn: document.getElementById('settings-toggle-btn'),
+      settingsMenuContent: document.getElementById('settings-menu-content')
     };
 
     // State Variables
@@ -296,6 +376,8 @@
     let pollenData = null, selectedPollens = new Set(), contaminationDates = [];
     let asthmaticRiskData = [], showAsthmaticRisk = false, combinedData = [];
     let isDarkMode = false;
+    let lastWeatherUpdate = null;
+    let lastPollenUpdate = null;
 
     // Storage Keys
     const STORAGE_KEYS = {
@@ -305,8 +387,13 @@
       CORSPROXY: 'selectedCorsProxy',
       POLLENS: 'selectedPollens',
       ASTHMA_TOGGLE: 'showAsthmaticRisk',
-      DARK_MODE: 'darkMode'
+      DARK_MODE: 'darkMode',
+      APIKEY: 'pollenApiKey',
+      SETTINGS_MENU_OPEN: 'settingsMenuOpen'  // NEW
     };
+
+    // Default Pollen API key as provided
+    const DEFAULT_API_KEY = 'tNzBM7e60cYVqPZWVX5LXPAX7JSGtsRY17y1Xq4uBAaXaVXNYSuzNBqaBDh2PIlq';
 
     // Utility Functions
     const utils = {
@@ -372,6 +459,36 @@
       }
     };
 
+    // Settings Menu Functions NEW
+    const settingsMenu = {
+      init: () => {
+        const savedState = localStorage.getItem(STORAGE_KEYS.SETTINGS_MENU_OPEN);
+        const open = savedState === null ? true : savedState === 'true'; // default open
+        settingsMenu.setOpen(open);
+        elements.settingsToggleBtn.addEventListener('click', () => {
+          settingsMenu.toggle();
+        });
+      },
+      setOpen: (open) => {
+        if (open) {
+          elements.settingsMenu.classList.remove('closed');
+          elements.settingsToggleBtn.textContent = 'Hide Settings';
+          elements.settingsToggleBtn.setAttribute('aria-expanded', 'true');
+          elements.settingsMenuContent.style.display = 'block';
+        } else {
+          elements.settingsMenu.classList.add('closed');
+          elements.settingsToggleBtn.textContent = 'Show Settings';
+          elements.settingsToggleBtn.setAttribute('aria-expanded', 'false');
+          elements.settingsMenuContent.style.display = 'none';
+        }
+        localStorage.setItem(STORAGE_KEYS.SETTINGS_MENU_OPEN, open.toString());
+      },
+      toggle: () => {
+        const isClosed = elements.settingsMenu.classList.contains('closed');
+        settingsMenu.setOpen(isClosed);
+      }
+    };
+
     // Data Fetching
     const dataFetch = {
       loadForecastPoints: async () => {
@@ -398,12 +515,15 @@
           rr: parameters.rr?.data ?? []
         };
       },
-      fetchPollenData: async (lat, lon) => {
-        const pollIds = [2, 291, 5, 7, 1, 4, 15, 3, 23, 16, 6, 17, 18].join(',');
-        const url = `https://www.polleninformation.at/index.php?id=536&type=15976824&lang_code=de&lang_id=0&L=0&tx_scapp_appapi%5Baction%5D=getFullContaminationData&locationType=gps&value%5Blatitude%5D=${lat}&value%5Blongitude%5D=${lon}&show_polls=${pollIds}&C=1&personal_contamination=false&sensitivity=0&country=AT&sessionid=&pasyfo=0`;
+      fetchPollenDataNewApi: async (lat, lon, apiKey) => {
+        if (!lat || !lon) throw new Error('Latitude and longitude required for pollen data.');
+        const country = 'AT'; // Default country Austria, could be expanded to detect dynamically
+        const lang = 'de'; // Default language German, could be configurable
+
+        const url = `https://www.polleninformation.at/api/forecast/public?country=${country}&lang=${lang}&latitude=${lat}&longitude=${lon}&apikey=${encodeURIComponent(apiKey)}`;
         const data = await utils.fetchWithProxy(url);
-        if (!data.success || !data.result) throw new Error('Invalid pollen contamination data');
-        return data.result;
+        if (!data || !data.contamination) throw new Error('Invalid pollen contamination data from new API');
+        return data;
       },
       fetchStationData: async (stationId, hoursRange) => {
         const now = new Date(), startDate = new Date(now.getTime() - hoursRange * 3600 * 1000);
@@ -472,11 +592,11 @@
 
         const getAsthmaColor = (v) => {
             switch (v) {
-            case 5: return 'red';
-            case 4: return 'orange';
-            case 3: return 'yellow';
-            case 2: return 'lightgreen';
-            case 1: return 'darkgreen';
+            case 8: return 'red';
+            case 7: return 'orange';
+            case 6: return 'yellow';
+            case 5: return 'lightgreen';
+            case 4: return 'darkgreen';
             default: return isDarkMode ? 'rgba(0, 102, 204, 0.9)' : 'rgba(0, 102, 204, 0.9)';
             }
         };
@@ -507,7 +627,12 @@
         // Pollen contamination datasets with colors per value
         const contaminationDatasets = pollenData?.contamination?.filter(p => selectedPollens.has(String(p.poll_id))).map(p => {
             // map daily contamination values to hourly as before
-            const data = mapDailyToHourly([p.contamination_1 ?? 0, p.contamination_2 ?? 0, p.contamination_3 ?? 0, p.contamination_4 ?? 0], 4);
+            const data = mapDailyToHourly([
+              p.contamination_1 ?? 0,
+              p.contamination_2 ?? 0,
+              p.contamination_3 ?? 0,
+              p.contamination_4 ?? 0
+            ], 4);
             // For each data point get color according to pollen value
             const borderColors = data.map(v => getPollenColor(v));
             const bgColors = data.map(v => {
@@ -543,7 +668,7 @@
         let asthmaBorderColors = [];
         let asthmaBgColors = [];
         if (showAsthmaticRisk) {
-            asthmaData = mapDailyToHourly(asthmaticRiskData, asthmaticRiskData.length);
+            asthmaData = [];
             asthmaBorderColors = asthmaData.map(v => getAsthmaColor(v));
             asthmaBgColors = asthmaData.map(v => {
             const c = getAsthmaColor(v);
@@ -670,11 +795,19 @@
               yTemp: { position: 'left', title: { display: true, text: 'Temperature (°C)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, suggestedMin: 0, suggestedMax: 40, grid: { drawOnChartArea: true, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)', lineWidth: 1 }, ticks: { stepSize: 5, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' } },
               yRain: { position: 'right', title: { display: true, text: 'Rainfall (mm)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 15, ticks: { stepSize: 3, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' } },
               yPollen: { position: 'right', offset: true, title: { display: true, text: 'Pollen Contamination (0-4)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 4, ticks: { stepSize: 1, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' }, type: 'linear' },
-              yAsthma: { position: 'left', offset: true, title: { display: showAsthmaticRisk, text: 'Asthmatic Risk (1-5)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: 1, max: 5, ticks: { stepSize: 1, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' }, type: 'linear', display: showAsthmaticRisk }
+              yAsthma: { position: 'left', offset: true, title: { display: showAsthmaticRisk, text: 'Asthmatic Risk (0-8)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 8, ticks: { stepSize: 1, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' }, type: 'linear', display: showAsthmaticRisk }
             },
             plugins: {
               legend: { display: true, position: 'top', align: 'center', maxHeight: 30, labels: { font: { size: 12 }, color: isDarkMode ? '#eee' : '#333', padding: 15, boxWidth: 20, usePointStyle: true } },
-              tooltip: { mode: 'index', intersect: false, position: 'nearest', backgroundColor: isDarkMode ? 'rgba(50, 50, 50, 0.95)' : 'rgba(255, 255, 255, 0.95)', titleColor: isDarkMode ? '#fff' : '#333', bodyColor: isDarkMode ? '#fff' : '#333', titleFont: { size: 13, weight: 'bold' }, bodyFont: { size: 12 }, padding: 10, boxPadding: 5, borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)', borderWidth: 1, callbacks: { label: ctx => `${ctx.dataset.label.split(' - ')[0]}: ${ctx.parsed.y}${ctx.dataset.label.includes('Temp') ? ' °C' : ctx.dataset.label.includes('Rainfall') ? ' mm' : ''}` } },
+              tooltip: { mode: 'index', intersect: false, position: 'nearest', backgroundColor: isDarkMode ? 'rgba(50, 50, 50, 0.95)' : 'rgba(255, 255, 255, 0.95)', titleColor: isDarkMode ? '#fff' : '#333', bodyColor: isDarkMode ? '#fff' : '#333', titleFont: { size: 13, weight: 'bold' }, bodyFont: { size: 12 }, padding: 10, boxPadding: 5, borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)', borderWidth: 1, callbacks: { label: ctx => {
+                const label = ctx.dataset.label.split(' - ')[0];
+                let unit = '';
+                if (label.includes('Temp')) unit = ' °C';
+                else if (label.includes('Rainfall')) unit = ' mm';
+                else if (label.includes('Asthmatic Risk')) unit = '';
+                else if (label.includes('Pollen')) unit = '';
+                return `${label}: ${ctx.parsed.y}${unit}`;
+              } } },
               annotation: { annotations },
               datalabels: { display: false }
             },
@@ -695,7 +828,9 @@
           const metaData = await utils.fetchWithProxy('https://www.geosphere.at/data/stations/tawes/points');
           const coordData = await utils.fetchWithProxy('https://www.geosphere.at/data/stations/tawes/current_data');
           if (!metaData.mapping || !coordData.features) throw new Error('Invalid station data format');
-          const coordsMap = Object.fromEntries(coordData.features.map(f => [String(f.properties.station), { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] }]));
+          const coordsMap = Object.fromEntries(
+            coordData.features.map(f => [String(f.properties.station), { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] }])
+          );
           stations = Object.fromEntries(Object.entries(metaData.mapping).map(([id, info]) => [id, {
             name: info.name, klima_id: info.klima_id, elevation: info.elevation,
             lat: coordsMap[id]?.lat ?? null, lon: coordsMap[id]?.lon ?? null, point_id: info.klima_id || id
@@ -712,7 +847,8 @@
             });
           core.restoreSavedSettings();
         } catch (error) {
-          elements.lastUpdated.textContent = '';
+          elements.lastUpdatedWeather.textContent = '';
+          elements.lastUpdatedPollen.textContent = '';
           elements.errorMsg.textContent = `Error loading stations: ${error.message}`;
         }
       },
@@ -722,13 +858,23 @@
           timeRange: localStorage.getItem(STORAGE_KEYS.TIMERANGE),
           futureDays: localStorage.getItem(STORAGE_KEYS.FUTUREDAYS),
           pollens: localStorage.getItem(STORAGE_KEYS.POLLENS),
-          asthmaToggle: localStorage.getItem(STORAGE_KEYS.ASTHMA_TOGGLE)
+          asthmaToggle: localStorage.getItem(STORAGE_KEYS.ASTHMA_TOGGLE),
+          apikey: localStorage.getItem(STORAGE_KEYS.APIKEY),
+          settingsMenuOpen: localStorage.getItem(STORAGE_KEYS.SETTINGS_MENU_OPEN) // NEW
         };
         if (saved.timeRange && elements.timerangeSelect.querySelector(`option[value="${saved.timeRange}"]`)) elements.timerangeSelect.value = saved.timeRange;
         if (saved.futureDays && elements.futuredaysSelect.querySelector(`option[value="${saved.futureDays}"]`)) elements.futuredaysSelect.value = saved.futureDays;
-        if (saved.pollens) try { selectedPollens = new Set(JSON.parse(saved.pollens)); } catch {}
+        if (saved.pollens) {
+          try { selectedPollens = new Set(JSON.parse(saved.pollens)); } catch {}
+        }
         showAsthmaticRisk = saved.asthmaToggle === 'true';
         elements.asthmaToggle.checked = showAsthmaticRisk;
+        // Set API key input, default if none saved
+        elements.apikeyInput.value = saved.apikey || DEFAULT_API_KEY;
+        // Restore settings menu open state
+        if (saved.settingsMenuOpen !== null) {
+          settingsMenu.setOpen(saved.settingsMenuOpen === 'true');
+        }
         if (saved.stationId && stations[saved.stationId]) {
           elements.stationSelect.value = saved.stationId;
           core.startRefresh();
@@ -737,51 +883,78 @@
           core.startRefresh();
         }
       },
-      fetchAndUpdateData: async () => {
+      fetchWeatherDataAndUpdate: async () => {
         try {
-            elements.errorMsg.textContent = '';
-            elements.lastUpdated.textContent = 'Loading data...';
-            const stationId = elements.stationSelect.value;
-            const hoursRange = parseInt(elements.timerangeSelect.value);
-            const futureHours = parseInt(elements.futuredaysSelect.value);
-            const data = await dataFetch.fetchStationData(stationId, hoursRange);
-            const timestamps = data.timestamps.map(ts => new Date(ts));
-            const { TL, RR } = data.features[0].properties.parameters;
-            const { lat, lon } = stations[stationId] || {};
-            const forecast = await dataFetch.fetchFlexiForecast(lat, lon);
+          elements.errorMsg.textContent = '';
+          elements.lastUpdatedWeather.textContent = 'Loading weather data...';
+          const stationId = elements.stationSelect.value;
+          const hoursRange = parseInt(elements.timerangeSelect.value);
+          const futureHours = parseInt(elements.futuredaysSelect.value);
+          const data = await dataFetch.fetchStationData(stationId, hoursRange);
+          const timestamps = data.timestamps.map(ts => new Date(ts));
+          const { TL, RR } = data.features[0].properties.parameters;
+          const { lat, lon } = stations[stationId] || {};
+          const forecast = await dataFetch.fetchFlexiForecast(lat, lon);
 
-            // Handle pollen data fetch with error handling to continue even if it fails
-            try {
-            pollenData = await dataFetch.fetchPollenData(lat, lon);
-            contaminationDates = [pollenData.contamination_date_1 || 'Heute', pollenData.contamination_date_2 || '', pollenData.contamination_date_3 || '', pollenData.contamination_date_4 || ''];
-            asthmaticRiskData = pollenData.additionalForecastData?.slice(0, 4).map(d => 3 - d.asthma_weather) || [];
-            if (pollenData.contamination?.length) ui.buildPollenCheckboxes(pollenData.contamination);
-            } catch (pollenError) {
-            console.error('Failed to fetch pollen data:', pollenError.message);
-            elements.errorMsg.textContent = `Warning: Pollen data unavailable (${pollenError.message}). Displaying temperature and rainfall data only.`;
-            pollenData = { contamination: [], additionalForecastData: [] }; // Default empty state
-            contaminationDates = [];
-            asthmaticRiskData = [];
-            elements.pollenSelect.innerHTML = '<p style="color: #cc0000; font-style: italic;">Pollen data unavailable</p>';
-            }
+          // Use only hourly data points where minute == 0
+          const pastData = timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && TL?.data[i] !== null ? acc.concat({ ts, temp: TL.data[i], rr: RR?.data[i] ?? 0 }) : acc, []);
+          const now = new Date(), maxFutureDate = new Date(now.getTime() + futureHours * 3600 * 1000);
+          const forecastData = forecast ? forecast.timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate && forecast.t2m[i] !== null ? acc.concat({ ts, temp: forecast.t2m[i], rr: forecast.rr[i] ?? 0 }) : acc, []) : [];
+          combinedData = [...pastData, ...forecastData];
 
-            // Use only hourly data points where minute == 0
-            const pastData = timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && TL?.data[i] !== null ? acc.concat({ ts, temp: TL.data[i], rr: RR?.data[i] ?? 0 }) : acc, []);
-            const now = new Date(), maxFutureDate = new Date(now.getTime() + futureHours * 3600 * 1000);
-            const forecastData = forecast ? forecast.timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate && forecast.t2m[i] !== null ? acc.concat({ ts, temp: forecast.t2m[i], rr: forecast.rr[i] ?? 0 }) : acc, []) : [];
-            combinedData = [...pastData, ...forecastData];
-            ui.drawChart();
-            ui.updateCurrentTemp(pastData);
-            elements.lastUpdated.textContent = `Last updated: ${new Date().toLocaleString()}`;
+          ui.drawChart();
+          ui.updateCurrentTemp(pastData);
+          lastWeatherUpdate = new Date();
+          elements.lastUpdatedWeather.textContent = `Weather data last updated: ${lastWeatherUpdate.toLocaleString()}`;
         } catch (error) {
-            elements.lastUpdated.textContent = elements.currentTemp.textContent = '';
-            elements.errorMsg.textContent = `Error loading data: ${error.message}`;
+          elements.lastUpdatedWeather.textContent = '';
+          elements.errorMsg.textContent = `Error loading weather data: ${error.message}`;
+        }
+      },
+      fetchPollenDataAndUpdate: async () => {
+        try {
+          elements.errorMsg.textContent = '';
+          elements.lastUpdatedPollen.textContent = 'Loading pollen data...';
+          const stationId = elements.stationSelect.value;
+          const { lat, lon } = stations[stationId] || {};
+          if (!lat || !lon) throw new Error('Station coordinates not available for pollen data.');
+
+          // Get API key from input, fallback to default
+          const apiKey = elements.apikeyInput.value.trim() || DEFAULT_API_KEY;
+          localStorage.setItem(STORAGE_KEYS.APIKEY, apiKey);
+
+          pollenData = await dataFetch.fetchPollenDataNewApi(lat, lon, apiKey);
+          contaminationDates = [
+            pollenData.contamination_date_1 || 'Heute',
+            pollenData.contamination_date_2 || '',
+            pollenData.contamination_date_3 || '',
+            pollenData.contamination_date_4 || ''
+          ];
+          if (pollenData.contamination?.length) ui.buildPollenCheckboxes(pollenData.contamination);
+
+          lastPollenUpdate = new Date();
+          elements.lastUpdatedPollen.textContent = `Pollen data last updated: ${lastPollenUpdate.toLocaleString()}`;
+
+          ui.drawChart(); // redraw to update pollen layers
+        } catch (pollenError) {
+          console.error('Failed to fetch pollen data:', pollenError.message);
+          elements.errorMsg.textContent = `Warning: Pollen data unavailable (${pollenError.message}). Displaying temperature and rainfall data only.`;
+          pollenData = { contamination: [], allergyrisk: {} }; // Default empty state
+          contaminationDates = [];
+          elements.pollenSelect.innerHTML = '<p style="color: #cc0000; font-style: italic;">Pollen data unavailable</p>';
+          elements.lastUpdatedPollen.textContent = '';
+          ui.drawChart();
         }
       },
       startRefresh: () => {
         if (refreshIntervalId) clearInterval(refreshIntervalId);
-        core.fetchAndUpdateData();
-        refreshIntervalId = setInterval(core.fetchAndUpdateData, 900000); // 15 minutes
+        core.fetchWeatherDataAndUpdate();
+        core.fetchPollenDataAndUpdate();
+        refreshIntervalId = setInterval(core.fetchWeatherDataAndUpdate, 900000); // 15 minutes
+
+        // Set separate pollen refresh interval (every 4 hours)
+        if (core.pollenIntervalId) clearInterval(core.pollenIntervalId);
+        core.pollenIntervalId = setInterval(core.fetchPollenDataAndUpdate, 4 * 3600 * 1000); // 4 hours
       },
       findNearestStation: position => {
         const { latitude: userLat, longitude: userLon } = position.coords;
@@ -803,7 +976,8 @@
           localStorage.setItem(STORAGE_KEYS.STATION, stationId);
           localStorage.setItem(STORAGE_KEYS.TIMERANGE, elements.timerangeSelect.value);
           localStorage.setItem(STORAGE_KEYS.FUTUREDAYS, elements.futuredaysSelect.value);
-          core.startRefresh();
+          core.fetchWeatherDataAndUpdate();
+          core.fetchPollenDataAndUpdate();
         }
       };
       elements.stationSelect.addEventListener('change', refreshOnChange);
@@ -812,6 +986,13 @@
       elements.corsproxyInput.addEventListener('input', () => {
         localStorage.setItem(STORAGE_KEYS.CORSPROXY, elements.corsproxyInput.value.trim());
         refreshOnChange();
+      });
+      elements.apikeyInput.addEventListener('change', () => {
+        const val = elements.apikeyInput.value.trim();
+        if (val) {
+          localStorage.setItem(STORAGE_KEYS.APIKEY, val);
+          core.fetchPollenDataAndUpdate();
+        }
       });
       elements.asthmaToggle.addEventListener('change', () => {
         showAsthmaticRisk = elements.asthmaToggle.checked;
@@ -851,6 +1032,7 @@
     // Initialize
     const init = async () => {
       darkMode.init();
+      settingsMenu.init(); // NEW initialize settings menu state
       await core.loadStations();
       setupListeners();
     };
