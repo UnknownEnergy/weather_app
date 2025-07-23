@@ -340,7 +340,7 @@
   <div id="current-temp" aria-live="polite" aria-atomic="true"></div>
   <div id="last-updated-weather"></div>
   <div id="last-updated-pollen"></div>
-  <div id="info">Data from Geosphere.at and Polleninformation.at</div>
+  <div id="info">Data from Geosphere.at, Polleninformation.at, and MenschensWetter.at</div>
   <div id="error-msg" role="alert" aria-live="assertive"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -435,12 +435,10 @@
     // Dark Mode Functions
     const darkMode = {
       init: () => {
-        // Check for saved preference
         const savedDarkMode = localStorage.getItem(STORAGE_KEYS.DARK_MODE);
         if (savedDarkMode !== null) {
           isDarkMode = savedDarkMode === 'true';
         } else {
-          // Check browser/system preference
           isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         }
         darkMode.applyTheme();
@@ -450,7 +448,7 @@
         localStorage.setItem(STORAGE_KEYS.DARK_MODE, isDarkMode.toString());
         darkMode.applyTheme();
         if (tempChart) {
-          ui.drawChart(); // Redraw chart to update colors
+          ui.drawChart();
         }
       },
       applyTheme: () => {
@@ -463,7 +461,7 @@
     const settingsMenu = {
       init: () => {
         const savedState = localStorage.getItem(STORAGE_KEYS.SETTINGS_MENU_OPEN);
-        const open = savedState === null ? true : savedState === 'true'; // default open
+        const open = savedState === null ? true : savedState === 'true';
         settingsMenu.setOpen(open);
         elements.settingsToggleBtn.addEventListener('click', () => {
           settingsMenu.toggle();
@@ -517,9 +515,8 @@
       },
       fetchPollenDataNewApi: async (lat, lon, apiKey) => {
         if (!lat || !lon) throw new Error('Latitude and longitude required for pollen data.');
-        const country = 'AT'; // Default country Austria, could be expanded to detect dynamically
-        const lang = 'de'; // Default language German, could be configurable
-
+        const country = 'AT';
+        const lang = 'de';
         const url = `https://www.polleninformation.at/api/forecast/public?country=${country}&lang=${lang}&latitude=${lat}&longitude=${lon}&apikey=${encodeURIComponent(apiKey)}`;
         const data = await utils.fetchWithProxy(url);
         if (!data || !data.contamination) throw new Error('Invalid pollen contamination data from new API');
@@ -535,7 +532,98 @@
         const data = await utils.fetchWithProxy(url.toString());
         if (!data.features?.length) throw new Error('No data available for this station.');
         return data;
+      },
+      // New function to fetch asthmatic risk from MenschensWetter API
+      fetchAsthmaticRisk: async (city, dayLabel, climaticZoneId) => {
+  if (!city || !dayLabel) throw new Error('City and day label are required for asthmatic risk');
+
+  const url = `https://www.menschenswetter.at/forecast/public/motivation/${city}/${encodeURIComponent(dayLabel)}`;
+  const headers = {
+    'Accept': 'text/javascript, text/html, application/xml, text/xml, */*'
+  };
+
+  const proxiedUrl = utils.applyCorsProxy(url);
+  const response = await fetch(proxiedUrl, { headers });
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching MenschensWetter asthmatic risk`);
+
+  const text = await response.text();
+
+  // Robust JSON extraction:
+  function extractMwForecastMapUpdateJson(text) {
+    const startMarker = 'mwForecastMap.update(';
+    const startIdx = text.indexOf(startMarker);
+    if (startIdx === -1) throw new Error('mwForecastMap.update() not found');
+
+    let idx = startIdx + startMarker.length;
+    let openBraces = 0;
+    let inString = false;
+    let stringChar = null;
+    let escapeNext = false;
+
+    for (; idx < text.length; idx++) {
+      const char = text[idx];
+
+      if (inString) {
+        if (escapeNext) {
+          escapeNext = false;
+        } else if (char === '\\') {
+          escapeNext = true;
+        } else if (char === stringChar) {
+          inString = false;
+          stringChar = null;
+        }
+      } else {
+        if (char === '"' || char === "'") {
+          inString = true;
+          stringChar = char;
+        } else if (char === '{') {
+          openBraces++;
+        } else if (char === '}') {
+          openBraces--;
+          if (openBraces === 0) {
+            return text.substring(startIdx + startMarker.length, idx + 1);
+          }
+        }
       }
+    }
+    throw new Error('Could not find end of mwForecastMap.update JSON');
+  }
+
+  let jsonStr;
+  try {
+    jsonStr = extractMwForecastMapUpdateJson(text);
+  } catch (err) {
+    throw new Error('Malformed asthmatic risk data JSON: ' + err.message);
+  }
+
+  let dataObj;
+  try {
+    dataObj = JSON.parse(jsonStr);
+  } catch (e) {
+    throw new Error('Failed to parse asthmatic risk JSON data: ' + e.message);
+  }
+
+  if (!climaticZoneId) {
+    const firstZone = dataObj.climatic_zones && dataObj.climatic_zones[0]?.climatic_zone;
+    if (!firstZone) return null;
+    return extractAsthmaValueFromZone(firstZone);
+  }
+
+  const matchedZone = dataObj.climatic_zones.find(cz => cz.climatic_zone.id === climaticZoneId);
+  if (!matchedZone) return null;
+
+  return extractAsthmaValueFromZone(matchedZone.climatic_zone);
+
+  function extractAsthmaValueFromZone(zone) {
+    if (!zone.forecasts || !zone.forecasts.length) return null;
+    const forecast = zone.forecasts[0];
+    if (!forecast || !forecast.weather || !forecast.weather.influences) return null;
+    const asthmaInfluence = forecast.weather.influences.find(inf => inf.indication && inf.indication.id === 56805278);
+    if (!asthmaInfluence) return null;
+    return asthmaInfluence.value;
+  }
+}
+
     };
 
     // UI Updates
@@ -583,7 +671,7 @@
 
         // Helper functions for color based on value
         const getTempColor = (v) => {
-            if (v === null || v === undefined) return isDarkMode ? 'rgba(255, 99, 132, 0.9)' : 'rgba(255, 99, 132, 0.9)'; // fallback red
+            if (v === null || v === undefined) return isDarkMode ? 'rgba(255, 99, 132, 0.9)' : 'rgba(255, 99, 132, 0.9)';
             if (v < 20) return 'blue';
             if (v >= 20 && v <= 25) return 'green';
             if (v > 25 && v <= 30) return 'orange';
@@ -591,14 +679,17 @@
         };
 
         const getAsthmaColor = (v) => {
-            switch (v) {
-            case 8: return 'red';
-            case 7: return 'orange';
-            case 6: return 'yellow';
-            case 5: return 'lightgreen';
-            case 4: return 'darkgreen';
+          // Map -3..3 (worst to best) to colors from red to green, with neutral at 0
+          switch (v) {
+            case -3: return 'rgba(255,0,0,0.9)';         // worst - red
+            case -2: return 'rgba(255,69,0,0.85)';       // darker orange-red
+            case -1: return 'rgba(255,140,0,0.8)';       // dark orange
+            case 0:  return 'rgba(255, 215, 0,0.7)';     // gold/yellow
+            case 1:  return 'rgba(144,238,144,0.7)';     // light green
+            case 2:  return 'rgba(0,128,0,0.8)';         // green
+            case 3:  return 'rgba(0,100,0,0.9)';         // dark green - best
             default: return isDarkMode ? 'rgba(0, 102, 204, 0.9)' : 'rgba(0, 102, 204, 0.9)';
-            }
+          }
         };
 
         const getPollenColor = (v) => {
@@ -616,50 +707,47 @@
         const tempPointBgColors = combinedData.map(d => getTempColor(d.temp));
         const tempBgColors = combinedData.map(d => {
             const c = getTempColor(d.temp);
-            // Make background fill color with opacity
             if (c === 'green') return 'rgba(0,128,0,0.15)';
             if (c === 'blue') return 'rgba(0,0,255,0.15)';
             if (c === 'orange') return 'rgba(255,165,0,0.15)';
             if (c === 'red') return 'rgba(255,0,0,0.15)';
-            return 'rgba(255, 99, 132, 0.15)'; // fallback
+            return 'rgba(255, 99, 132, 0.15)';
         });
 
         // Pollen contamination datasets with colors per value
         const contaminationDatasets = pollenData?.contamination?.filter(p => selectedPollens.has(String(p.poll_id))).map(p => {
-            // map daily contamination values to hourly as before
             const data = mapDailyToHourly([
               p.contamination_1 ?? 0,
               p.contamination_2 ?? 0,
               p.contamination_3 ?? 0,
               p.contamination_4 ?? 0
             ], 4);
-            // For each data point get color according to pollen value
             const borderColors = data.map(v => getPollenColor(v));
             const bgColors = data.map(v => {
-            const c = getPollenColor(v);
-            if (c === 'green') return 'rgba(0,128,0,0.2)';
-            if (c === 'yellow') return 'rgba(255,255,0,0.2)';
-            if (c === 'orange') return 'rgba(255,165,0,0.2)';
-            if (c === 'red') return 'rgba(255,0,0,0.2)';
-            return 'rgba(83, 102, 255, 0.2)';
+              const c = getPollenColor(v);
+              if (c === 'green') return 'rgba(0,128,0,0.2)';
+              if (c === 'yellow') return 'rgba(255,255,0,0.2)';
+              if (c === 'orange') return 'rgba(255,165,0,0.2)';
+              if (c === 'red') return 'rgba(255,0,0,0.2)';
+              return 'rgba(83, 102, 255, 0.2)';
             });
             return {
-            label: p.poll_title,
-            data,
-            backgroundColor: bgColors,
-            borderColor: borderColors,
-            type: 'line',
-            fill: true,
-            tension: 0.4,
-            pointRadius: 3,
-            pointHoverRadius: 5,
-            pointBackgroundColor: borderColors,
-            pointBorderColor: borderColors,
-            pointBorderWidth: 1,
-            borderWidth: 2,
-            yAxisID: 'yPollen',
-            spanGaps: true,
-            order: 3
+              label: p.poll_title,
+              data,
+              backgroundColor: bgColors,
+              borderColor: borderColors,
+              type: 'line',
+              fill: true,
+              tension: 0.4,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+              pointBackgroundColor: borderColors,
+              pointBorderColor: borderColors,
+              pointBorderWidth: 1,
+              borderWidth: 2,
+              yAxisID: 'yPollen',
+              spanGaps: true,
+              order: 3
             };
         }) || [];
 
@@ -668,17 +756,26 @@
         let asthmaBorderColors = [];
         let asthmaBgColors = [];
         if (showAsthmaticRisk) {
-            asthmaData = [];
-            asthmaBorderColors = asthmaData.map(v => getAsthmaColor(v));
-            asthmaBgColors = asthmaData.map(v => {
-            const c = getAsthmaColor(v);
-            if (c === 'red') return 'rgba(255,0,0,0.5)';
-            if (c === 'orange') return 'rgba(255,165,0,0.5)';
-            if (c === 'yellow') return 'rgba(255,255,0,0.5)';
-            if (c === 'lightgreen') return 'rgba(144,238,144,0.5)'; // lightgreen
-            if (c === 'darkgreen') return 'rgba(0,100,0,0.5)'; // darkgreen
-            return 'rgba(0,102,204,0.5)';
+          asthmaData = combinedData.map(({ ts }) => {
+            // Find risk for this timestamp by matching date string to the cached risk data
+            // asthmaticRiskData is array of { ts: Date, value: int }
+            // Find closest or exact match by date (day only)
+            const dayOnly = new Date(ts.getFullYear(), ts.getMonth(), ts.getDate()).getTime();
+            const found = asthmaticRiskData.find(d => {
+              const dDay = new Date(d.ts.getFullYear(), d.ts.getMonth(), d.ts.getDate()).getTime();
+              return dDay === dayOnly;
             });
+            return found ? found.value : null;
+          });
+          asthmaBorderColors = asthmaData.map(v => getAsthmaColor(v));
+          asthmaBgColors = asthmaData.map(v => {
+            const c = getAsthmaColor(v);
+            if (c.startsWith('rgba(')) {
+              // make 50% opacity for background
+              return c.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, 'rgba($1,$2,$3,0.5)');
+            }
+            return c;
+          });
         }
 
         const datasets = [
@@ -719,7 +816,7 @@
         ];
 
         if (showAsthmaticRisk) {
-            datasets.push({
+          datasets.push({
             label: 'Asthmatic Risk',
             data: asthmaData,
             borderColor: asthmaBorderColors,
@@ -728,15 +825,15 @@
             type: 'line',
             fill: false,
             tension: 0.4,
-            pointRadius: 4,
-            pointHoverRadius: 6,
+            pointRadius: 6,
+            pointHoverRadius: 8,
             pointBackgroundColor: asthmaBorderColors,
             pointBorderColor: asthmaBorderColors,
             pointBorderWidth: 1.5,
             borderWidth: 2.5,
             spanGaps: true,
             order: 2
-            });
+          });
         }
 
         const now = new Date(), annotations = {};
@@ -795,7 +892,7 @@
               yTemp: { position: 'left', title: { display: true, text: 'Temperature (°C)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, suggestedMin: 0, suggestedMax: 40, grid: { drawOnChartArea: true, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)', lineWidth: 1 }, ticks: { stepSize: 5, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' } },
               yRain: { position: 'right', title: { display: true, text: 'Rainfall (mm)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 15, ticks: { stepSize: 3, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' } },
               yPollen: { position: 'right', offset: true, title: { display: true, text: 'Pollen Contamination (0-4)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 4, ticks: { stepSize: 1, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' }, type: 'linear' },
-              yAsthma: { position: 'left', offset: true, title: { display: showAsthmaticRisk, text: 'Asthmatic Risk (0-8)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: 0, max: 8, ticks: { stepSize: 1, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' }, type: 'linear', display: showAsthmaticRisk }
+              yAsthma: { position: 'left', offset: true, title: { display: showAsthmaticRisk, text: 'Asthmatic Risk (-3 to 3)', font: { size: 14, weight: 'bold' }, color: isDarkMode ? '#eee' : '#333' }, grid: { drawOnChartArea: false, color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' }, min: -3, max: 3, ticks: { stepSize: 1, font: { size: 11 }, color: isDarkMode ? '#ccc' : '#555' }, type: 'linear', display: showAsthmaticRisk }
             },
             plugins: {
               legend: { display: true, position: 'top', align: 'center', maxHeight: 30, labels: { font: { size: 12 }, color: isDarkMode ? '#eee' : '#333', padding: 15, boxWidth: 20, usePointStyle: true } },
@@ -833,7 +930,9 @@
           );
           stations = Object.fromEntries(Object.entries(metaData.mapping).map(([id, info]) => [id, {
             name: info.name, klima_id: info.klima_id, elevation: info.elevation,
-            lat: coordsMap[id]?.lat ?? null, lon: coordsMap[id]?.lon ?? null, point_id: info.klima_id || id
+            lat: coordsMap[id]?.lat ?? null, lon: coordsMap[id]?.lon ?? null, point_id: info.klima_id || id,
+            zip: info.zip ?? null,
+            climatic_zone_id: info.climatic_zone_id ?? null
           }]));
           elements.stationSelect.innerHTML = '';
           Object.entries(stations)
@@ -860,7 +959,7 @@
           pollens: localStorage.getItem(STORAGE_KEYS.POLLENS),
           asthmaToggle: localStorage.getItem(STORAGE_KEYS.ASTHMA_TOGGLE),
           apikey: localStorage.getItem(STORAGE_KEYS.APIKEY),
-          settingsMenuOpen: localStorage.getItem(STORAGE_KEYS.SETTINGS_MENU_OPEN) // NEW
+          settingsMenuOpen: localStorage.getItem(STORAGE_KEYS.SETTINGS_MENU_OPEN)
         };
         if (saved.timeRange && elements.timerangeSelect.querySelector(`option[value="${saved.timeRange}"]`)) elements.timerangeSelect.value = saved.timeRange;
         if (saved.futureDays && elements.futuredaysSelect.querySelector(`option[value="${saved.futureDays}"]`)) elements.futuredaysSelect.value = saved.futureDays;
@@ -869,9 +968,7 @@
         }
         showAsthmaticRisk = saved.asthmaToggle === 'true';
         elements.asthmaToggle.checked = showAsthmaticRisk;
-        // Set API key input, default if none saved
         elements.apikeyInput.value = saved.apikey || DEFAULT_API_KEY;
-        // Restore settings menu open state
         if (saved.settingsMenuOpen !== null) {
           settingsMenu.setOpen(saved.settingsMenuOpen === 'true');
         }
@@ -901,6 +998,24 @@
           const now = new Date(), maxFutureDate = new Date(now.getTime() + futureHours * 3600 * 1000);
           const forecastData = forecast ? forecast.timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate && forecast.t2m[i] !== null ? acc.concat({ ts, temp: forecast.t2m[i], rr: forecast.rr[i] ?? 0 }) : acc, []) : [];
           combinedData = [...pastData, ...forecastData];
+
+          // Update asthmaticRiskData for current station and "Heute"
+          if (showAsthmaticRisk && stations[stationId].name) {
+            // Fetch for Heute (today) only for demo, can extend to other days if needed
+            try {
+              // MenschensWetter API only returns one forecast per call, so we cache only one day here
+              const riskValue = await dataFetch.fetchAsthmaticRisk(stations[stationId].name, 'Heute');
+              const today = new Date();
+              today.setHours(0,0,0,0);
+              asthmaticRiskData = [{ ts: today, value: riskValue }];
+            } catch (err) {
+              console.warn('Asthmatic risk fetch failed:', err.message);
+              asthmaticRiskData = [];
+              elements.errorMsg.textContent = 'Warning: Asthmatic risk data not available.';
+            }
+          } else {
+            asthmaticRiskData = [];
+          }
 
           ui.drawChart();
           ui.updateCurrentTemp(pastData);
@@ -935,11 +1050,11 @@
           lastPollenUpdate = new Date();
           elements.lastUpdatedPollen.textContent = `Pollen data last updated: ${lastPollenUpdate.toLocaleString()}`;
 
-          ui.drawChart(); // redraw to update pollen layers
+          ui.drawChart();
         } catch (pollenError) {
           console.error('Failed to fetch pollen data:', pollenError.message);
           elements.errorMsg.textContent = `Warning: Pollen data unavailable (${pollenError.message}). Displaying temperature and rainfall data only.`;
-          pollenData = { contamination: [], allergyrisk: {} }; // Default empty state
+          pollenData = { contamination: [], allergyrisk: {} };
           contaminationDates = [];
           elements.pollenSelect.innerHTML = '<p style="color: #cc0000; font-style: italic;">Pollen data unavailable</p>';
           elements.lastUpdatedPollen.textContent = '';
@@ -952,7 +1067,6 @@
         core.fetchPollenDataAndUpdate();
         refreshIntervalId = setInterval(core.fetchWeatherDataAndUpdate, 900000); // 15 minutes
 
-        // Set separate pollen refresh interval (every 4 hours)
         if (core.pollenIntervalId) clearInterval(core.pollenIntervalId);
         core.pollenIntervalId = setInterval(core.fetchPollenDataAndUpdate, 4 * 3600 * 1000); // 4 hours
       },
@@ -997,7 +1111,7 @@
       elements.asthmaToggle.addEventListener('change', () => {
         showAsthmaticRisk = elements.asthmaToggle.checked;
         localStorage.setItem(STORAGE_KEYS.ASTHMA_TOGGLE, showAsthmaticRisk.toString());
-        ui.drawChart();
+        core.fetchWeatherDataAndUpdate(); // refetch asthmatic data accordingly
       });
       elements.locationBtn.addEventListener('click', () => {
         if (!navigator.geolocation) {
@@ -1032,7 +1146,7 @@
     // Initialize
     const init = async () => {
       darkMode.init();
-      settingsMenu.init(); // NEW initialize settings menu state
+      settingsMenu.init();
       await core.loadStations();
       setupListeners();
     };
