@@ -375,6 +375,8 @@
     let stations = {}, forecastPoints = [], tempChart, refreshIntervalId;
     let pollenData = null, selectedPollens = new Set(), contaminationDates = [];
     let asthmaticRiskData = [], showAsthmaticRisk = false, combinedData = [];
+    // German day labels to fetch
+    const asthmaDayLabels = ["Vorgestern", "Gestern", "Heute", "Morgen", "Übermorgen"];
     let isDarkMode = false;
     let lastWeatherUpdate = null;
     let lastPollenUpdate = null;
@@ -999,15 +1001,27 @@
           const forecastData = forecast ? forecast.timestamps.reduce((acc, ts, i) => ts.getMinutes() === 0 && ts > now && ts <= maxFutureDate && forecast.t2m[i] !== null ? acc.concat({ ts, temp: forecast.t2m[i], rr: forecast.rr[i] ?? 0 }) : acc, []) : [];
           combinedData = [...pastData, ...forecastData];
 
-          // Update asthmaticRiskData for current station and "Heute"
+         // German day labels to fetch
           if (showAsthmaticRisk && stations[stationId].name) {
-            // Fetch for Heute (today) only for demo, can extend to other days if needed
             try {
-              // MenschensWetter API only returns one forecast per call, so we cache only one day here
-              const riskValue = await dataFetch.fetchAsthmaticRisk(stations[stationId].name, 'Heute');
+              // Fetch asthmatic risk for all 5 days in parallel
+              const riskValues = await Promise.all(
+                asthmaDayLabels.map(dayLabel => dataFetch.fetchAsthmaticRisk(stations[stationId].name, dayLabel))
+              );
+
+              // Map these risk values to dates relative to today
               const today = new Date();
               today.setHours(0,0,0,0);
-              asthmaticRiskData = [{ ts: today, value: riskValue }];
+
+              // Calculate date offsets for Vorgestern (-2), Gestern (-1), Heute (0), Morgen (+1), Übermorgen (+2)
+              const dayOffsets = [-2, -1, 0, 1, 2];
+
+              asthmaticRiskData = dayOffsets.map((offset, idx) => {
+                const date = new Date(today);
+                date.setDate(today.getDate() + offset);
+                return { ts: date, value: riskValues[idx] };
+              });
+
             } catch (err) {
               console.warn('Asthmatic risk fetch failed:', err.message);
               asthmaticRiskData = [];
