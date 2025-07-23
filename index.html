@@ -539,18 +539,20 @@
       fetchAsthmaticRisk: async (city, dayLabel, climaticZoneId) => {
   if (!city || !dayLabel) throw new Error('City and day label are required for asthmatic risk');
 
-  const url = `https://www.menschenswetter.at/forecast/public/motivation/${city}/${encodeURIComponent(dayLabel)}`;
+  const url = `https://www.menschenswetter.at/forecast/public/motivation/${encodeURIComponent(city)}/${encodeURIComponent(dayLabel)}`;
   const headers = {
     'Accept': 'text/javascript, text/html, application/xml, text/xml, */*'
   };
 
-  const proxiedUrl = utils.applyCorsProxy(url);
+  // Apply your CORS proxy if needed - replace utils.applyCorsProxy with your own implementation if different
+  const proxiedUrl = utils.applyCorsProxy ? utils.applyCorsProxy(url) : url;
+
   const response = await fetch(proxiedUrl, { headers });
   if (!response.ok) throw new Error(`HTTP ${response.status} fetching MenschensWetter asthmatic risk`);
 
   const text = await response.text();
 
-  // Robust JSON extraction:
+  // Extract JSON string from mwForecastMap.update(...)
   function extractMwForecastMapUpdateJson(text) {
     const startMarker = 'mwForecastMap.update(';
     const startIdx = text.indexOf(startMarker);
@@ -605,25 +607,36 @@
     throw new Error('Failed to parse asthmatic risk JSON data: ' + e.message);
   }
 
-  if (!climaticZoneId) {
-    const firstZone = dataObj.climatic_zones && dataObj.climatic_zones[0]?.climatic_zone;
-    if (!firstZone) return null;
-    return extractAsthmaValueFromZone(firstZone);
+  // Helper: find climatic_zone_id for city
+  function getClimaticZoneIdForCity(config, cityName) {
+    if (config.active_residence?.residence?.city?.toLowerCase() === cityName.toLowerCase()) {
+      return config.active_residence.residence.climatic_zone_id;
+    }
+    const cityObj = config.cities.find(c =>
+      c.residence.city.toLowerCase() === cityName.toLowerCase()
+    );
+    return cityObj ? cityObj.residence.climatic_zone_id : null;
   }
 
-  const matchedZone = dataObj.climatic_zones.find(cz => cz.climatic_zone.id === climaticZoneId);
-  if (!matchedZone) return null;
-
-  return extractAsthmaValueFromZone(matchedZone.climatic_zone);
-
-  function extractAsthmaValueFromZone(zone) {
+  // Extract asthma influence value for a climatic zone and day
+  function extractAsthmaValueFromZone(zone, day) {
     if (!zone.forecasts || !zone.forecasts.length) return null;
-    const forecast = zone.forecasts[0];
+    // Try to find forecast matching the day exactly
+    const forecast = zone.forecasts.find(f => f.day === day) || zone.forecasts[0];
     if (!forecast || !forecast.weather || !forecast.weather.influences) return null;
     const asthmaInfluence = forecast.weather.influences.find(inf => inf.indication && inf.indication.id === 56805278);
-    if (!asthmaInfluence) return null;
-    return asthmaInfluence.value;
+    return asthmaInfluence ? asthmaInfluence.value : null;
   }
+
+  if (!dataObj.config) throw new Error('Missing config in forecast data');
+
+  const climaticZoneIdd = getClimaticZoneIdForCity(dataObj.config, city);
+  if (!climaticZoneIdd) throw new Error(`Climatic zone not found for city "${city}"`);
+
+  const matchedZone = dataObj.climatic_zones.find(cz => cz.climatic_zone.id === climaticZoneIdd);
+  if (!matchedZone) return null;
+
+  return extractAsthmaValueFromZone(matchedZone.climatic_zone, dayLabel);
 }
 
     };
@@ -1005,8 +1018,10 @@
           if (showAsthmaticRisk && stations[stationId].name) {
             try {
               // Fetch asthmatic risk for all 5 days in parallel
+              const cityName = stations[stationId].name.substring(0,
+              stations[stationId].name.indexOf(' '))
               const riskValues = await Promise.all(
-                asthmaDayLabels.map(dayLabel => dataFetch.fetchAsthmaticRisk(stations[stationId].name, dayLabel))
+                asthmaDayLabels.map(dayLabel => dataFetch.fetchAsthmaticRisk(cityName, dayLabel))
               );
 
               // Map these risk values to dates relative to today
