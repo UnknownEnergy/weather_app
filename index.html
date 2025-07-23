@@ -1018,10 +1018,11 @@
           if (showAsthmaticRisk && stations[stationId].name) {
             try {
               // Fetch asthmatic risk for all 5 days in parallel
-              const cityName = stations[stationId].name.substring(0,
-              stations[stationId].name.indexOf(' '))
+              const cityName = stations[stationId].name.split(' ')[0];
               const riskValues = await Promise.all(
-                asthmaDayLabels.map(dayLabel => dataFetch.fetchAsthmaticRisk(cityName, dayLabel))
+                asthmaDayLabels.map(dayLabel => {
+                  return dataFetch.fetchAsthmaticRisk(cityName, dayLabel);
+                })
               );
 
               // Map these risk values to dates relative to today
