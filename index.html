@@ -539,7 +539,7 @@
       fetchAsthmaticRisk: async (city, dayLabel, climaticZoneId) => {
   if (!city || !dayLabel) throw new Error('City and day label are required for asthmatic risk');
 
-  const url = `https://www.menschenswetter.at/forecast/public/motivation/${encodeURIComponent(city)}/${encodeURIComponent(dayLabel)}`;
+  const url = `https://www.menschenswetter.at/forecast/public/asthma/${encodeURIComponent(city)}/${encodeURIComponent(dayLabel)}`;
   const headers = {
     'Accept': 'text/javascript, text/html, application/xml, text/xml, */*'
   };
@@ -620,19 +620,14 @@
 
   // Extract asthma influence value for a climatic zone and day
   function extractAsthmaValueFromZone(zone, day) {
-    if (!zone.forecasts || !zone.forecasts.length) return null;
-    // Try to find forecast matching the day exactly
-    const forecast = zone.forecasts.find(f => f.day === day) || zone.forecasts[0];
-    if (!forecast || !forecast.weather || !forecast.weather.influences) return null;
-    const asthmaInfluence = forecast.weather.influences.find(inf => inf.indication && inf.indication.id === 56805278);
-    return asthmaInfluence ? asthmaInfluence.value : null;
+   return zone.forecasts[0]?.weather?.influences[0]?.value;
   }
 
   if (!dataObj.config) throw new Error('Missing config in forecast data');
 
   const climaticZoneIdd = getClimaticZoneIdForCity(dataObj.config, city);
   if (!climaticZoneIdd) throw new Error(`Climatic zone not found for city "${city}"`);
-
+  
   const matchedZone = dataObj.climatic_zones.find(cz => cz.climatic_zone.id === climaticZoneIdd);
   if (!matchedZone) return null;
 
